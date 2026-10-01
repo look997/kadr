@@ -6,6 +6,8 @@ dev-material/
 *.pkg.tar.zst
 *.sig
 *.tar.gz
+*.bak
+*.bak*
 
 # python
 __pycache__/

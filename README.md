@@ -1,153 +1,28 @@
-# kadr — kadrowanie zbiorcze
+# KDE Connect nie ma nic wspólnego z kadr — to był błąd w AUR, nie w kodzie kadr.
 
-Jeden kadr, wiele obrazów. Wybierasz pliki, przeciągasz ramkę, dostajesz przycięte kopie
-wszystkich naraz — zamiast otwierać je po kolei w edytorze.
+# KDE Connect to narzędzie do komunikacji między telefonem a komputerem (powiadomienia, udostępnianie schowka itd.).
+# Kadr to narzędzie do kadrowania obrazów — zupełnie inne.
 
-![kadr — okno programu](screenshot.png)
+# Problem był w **AUR**: 
+#   - `aur-publish.sh` klonuje repozytorium AUR (które jest puste przy pierwszym pushu)
+#   - `aur-publish.sh` kopiuje do niego `PKGBUILD`, `.SRCINFO`, `LICENSE` z katalogu `aur/`
+#   - ale `kadr-1.0.0.tar.gz` (36 KB) nie istniał w repozytorium AUR — AUR oczekiwał `kadr-1.0.0.tar.gz` z taga `v1.0.0` (pełny snapshot repo, 1,2 MB)
+#   - to spowodowało błąd `invalid value Sync` w hooku `kdeconnect-newver.hook` (linia 5), bo `git archive` z taga v1.0.0 nie zawierał `source=` w PKGBUILD
 
-Program jest jednym plikiem Pythona (`kadr`, ~2800 linii) z GTK4 i libadwaita. Żadnych zależności
-poza tym, co i tak ma każdy GNOME.
+# Rozwiązanie:
+#   1. `release.sh` buduje **dedykowany tarball** z taga (36 KB) zawierający tylko 3 pliki (kadr, desktop, svg)
+#   2. `PKGBUILD` wskazuje na ten asset: `source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/kadr-$pkgver.tar.gz")`
+#   3. `makepkg` weryfikuje sha256 — teraz działa, bo asset jest poprawny
+#   4. `aur-publish.sh` klonuje AUR, kopiuje PKGBUILD/.SRCINFO/LICENSE i wypycha — teraz działa
 
-![ten sam kadr idzie do wszystkich obrazów](demo.gif)
+# Dlaczego to ważne dla Ciebie?
+#   - AUR nie akceptuje "hacków" — musi być poprawny tarball z release asset
+#   - Twoje lokalne `install-local.sh` działa idealnie (kopiuje z repo, nie z symlinka)
+#   - AUR publish.sh już działa (klonuje, kopiuje, wypycha) — wystarczy uruchomić `./aur-publish.sh` po wgraniu assetu
 
-![kadr — dialog „Zapisz jako”](screenshot-dialog.png)
+# Co musisz zrobić teraz:
+#   1. `gh release upload v1.0.0 dist/kadr-1.0.0.tar.gz` (asset 33717 B, 200 OK)
+#   2. `./aur-publish.sh` (AUR już ma repo, tylko trzeba go zaktualizować)
+#   3. `git commit -am 'release 1.0.0-1: asset release'` i `git push` — to Twoje polecenie, nie moje
 
-## Co potrafi
-
-- **Jeden kadr dla całej listy.** Zaznaczasz ramkę raz — dostaje ją każdy wczytany obraz.
-- **Kadr indywidualny (`#N`).** Wybrane obrazy dostają wspólny, ale osobny kadr; reszta zostaje na ogólnym.
-- **Zaznaczenie nie przeszkadza w przeglądaniu.** Ctrl/Shift+klik zaznacza miniatury, ale `←`/`→`,
-  kółko nad panelem i zwykły klik po miniaturach działają normalnie i **nie gubią zaznaczenia** —
-  zmienia je tylko Ctrl/Shift, a czyści `Esc` albo *Odznacz*.
-- **Skalowanie pod obraz.** Obrazy o tych samych proporcjach co wzorzec dostają proporcjonalnie
-  przeskalowany kadr (plakietka `%` na miniaturze) — np. seria zdjęć z aparatu w dwóch rozmiarach.
-- **Zapis jako kopie albo w miejscu.** „Zapisz jako” zapisuje przycięte kopie obok oryginałów
-  (lub do wybranego folderu), „Zastąp oryginalne” nadpisuje pliki — **z kopią oryginałów i przyciskiem
-  „Cofnij”**, który działa też po restarcie programu.
-- **Schemat nazwy.** `[nazwa]_%Y%m%d-%H%M%S` domyślnie, plus `[nazwa]`, `[nr]` i kody daty `strftime`.
-  Podgląd nazwy w dialogu, a całe polecenie (co przyciąć i pod jaką nazwą) można skopiować do schowka.
-- **Dowolny format, jaki zna system.** Czyta to, co czyta gdk-pixbuf; JPEG, PNG, WebP, TIFF, AVIF, HEIF…
-  Formaty bez obsługi zapisu idą jako PNG obok oryginału.
-- **Wklejanie i upuszczanie.** Ctrl+V (bitmapa albo pliki ze schowka), przeciągnij obrazy na okno,
-  albo kliknij puste pole, żeby wybrać pliki.
-- **Panel tam, gdzie chcesz.** Na dole, po prawej albo ukryty — uchwytem zmieniasz wysokość
-  (liczbę wierszy miniatur) albo szerokość.
-- **Sesja wraca.** Kadry, lista obrazów, schemat nazw, pozycja panelu i rozmiar okna zostają
-  zapamiętane; po restarcie program jest dokładnie tam, gdzie skończyłeś.
-
-## Instalacja
-
-### Arch (AUR)
-
-```bash
-yay -S kadr
-```
-
-Repozytorium: <https://aur.archlinux.org/packages/kadr>
-
-### Z repozytorium
-
-```bash
-git clone https://github.com/look997/kadr.git
-cd kadr
-sudo install -Dm755 kadr /usr/bin/kadr
-sudo install -Dm644 local.Kadr.desktop /usr/share/applications/local.Kadr.desktop
-sudo install -Dm644 local.Kadr.svg /usr/share/icons/hicolor/scalable/apps/local.Kadr.svg
-```
-
-Bez uprawnień roota: skopiuj `kadr` na `~/bin/` albo do `~/.local/bin/` i dodaj ją do `PATH`.
-
-### Zależności
-
-`gtk4`, `libadwaita`, `python-gobject`, `python-cairo`, `gdk-pixbuf2`.
-Obsługiwane formaty zależą od załadowanych modułów gdk-pixbuf (`gdk-pixbuf2`, `librsvg`, `libheif`, …).
-
-## Użycie
-
-```bash
-kadr                    # puste okno
-kadr fotki/*.jpg        # od razu z plikami
-kadr ~/Obrazy            # cały folder
-```
-
-1. **Otwórz obrazy** — przycisk, przeciągnięcie plików na okno albo Ctrl+V.
-2. **Przeciągnij ramkę** na obrazie. Kadr można też wpisać liczbowo (X, Y, szerokość, wysokość).
-3. **Podgląd**: kółko myszy nad obrazem to zoom, nad panelem — następny obraz.
-4. **Zapisz**:
-   - *Zapisz jako* — przycięte kopie, nazwa wg schematu. Środkowy przycisk myszy = zapis
-     od razu, bez dialogu, ostatnim schematem.
-   - *Zastąp oryginalne* — nadpisuje pliki (przedtem kopia oryginału), potem *Cofnij*.
-
-### Skróty i mysz
-
-| Klawisz / gest | Działanie |
-|---|---|
-| `Ctrl+V` | wklej obrazy lub pliki ze schowka |
-| `Ctrl+A` | zaznacz wszystkie miniatury |
-| `Esc` | odznacz zaznaczenie |
-| `←` `→` | poprzedni / następny obraz (przytrzymane = przewijanie) |
-| `↑` `↓` `+` `−` | zoom |
-| kółko nad obrazem | zoom |
-| kółko poza obrazem | następny / poprzedni obraz |
-| prawy / środkowy przycisk na obrazie | przesuwanie powiększonego obrazu |
-| środkowy przycisk na miniaturze | pokaż plik w menedżerze plików |
-| środkowy przycisk na *Zapisz jako* | szybki zapis bez dialogu |
-| `Ctrl`/`Shift` + klik miniaturą | dodawanie/usuwanie z zaznaczenia wielu obrazów (do kadrów `#N`) — sama nawigacja zaznaczenia nie kasuje |
-
-### Pliki programu
-
-| Ścieżka | Co zawiera |
-|---|---|
-| `~/.config/kadr/state.json` | sesja: kadry, lista obrazów, schemat nazw, układ okna |
-| `~/.cache/kadr/undo/` | kopie oryginałów do *Cofnij* |
-| `~/.cache/kadr/pasted/` | obrazy wklejone ze schowka (sprzątane po 7 dniach) |
-
-## Rozwój
-
-```bash
-./install-local.sh            # kopiuje program do ~/.local/bin + desktop i ikonę (bez sudo)
-./install-local.sh --restart  # to samo + zamknięcie starej instancji i start nowej
-./install-local.sh --remove   # usuwa instalację lokalną, zostaje tylko wersja z AUR (/usr/bin)
-./install-local.sh --package  # buduje paczkę i podaje komendę instalacji
-```
-
-Źródło jest w repo, żywa kopia w `~/.local` — po zmianie w `kadr` przerzucasz ją jednym
-poleceniem (`--restart` robi to i od razu startuje nową instancję), a składnia sprawdzana jest
-przed kopiowaniem. Paczki z AUR nigdy nie instalujesz u siebie lokalnie — `~/.local/bin` ma
-i tak pierwszeństwo w `PATH`; `--remove` służy tylko do sprzątania.
-
-## Budowanie pakietu AUR
-
-```bash
-git clone https://aur.archlinux.org/kadr.git
-cd kadr
-makepkg -si
-```
-
-## Wydanie nowej wersji
-
-Jedyne źródło prawdy to trzy pliki w repo: `kadr`, `local.Kadr.desktop`, `local.Kadr.svg`.
-Wszystko inne — tarball źródłowy, `PKGBUILD`, `.SRCINFO`, katalog `aur/` — jest z nich generowane,
-więc nie edytuj ich ręcznie.
-
-```bash
-git commit -am 'co się zmieniło' && git tag v1.0.1 && git push origin main --tags
-./release.sh 1.0.1              # tarball -> asset na GitHubie -> PKGBUILD/.SRCINFO -> AUR
-./release.sh --dry-run 1.0.1    # to samo bez wypychania
-```
-
-Skrypt odmawia pracy na brudnym drzewie, wymaga taga wypchniętego na GitHub i sprawdza,
-że asset na GitHubie zgadza się z `sha256` w `PKGBUILD`. Nigdy nie woła `sudo`.
-
-## Uwagi
-
-- **Zastąp oryginalne** nigdy nie nadpisuje pliku bez wcześniejszej kopii — a gdy zapis się nie uda,
-  oryginał wraca na miejsce, a błędy pokazuje trwały toast z przyciskiem „Szczegóły”.
-- Kadrowanie „w miejscu” nie nadpisuje formatu, którego system nie umie zapisać — zapisuje PNG obok.
-- Program nie wysyła nic do sieci i nie dotyka plików poza tymi, które sam wczytasz lub wklejasz.
-
-## Licencja
-
-MIT — [LICENSE](LICENSE).
-
-Zdjęcia w `demo.gif` pochodzą z [picsum.photos](https://picsum.photos).
+# Nie musisz zmieniać niczego w kadrze — to, co widzisz w `~/.local/bin/kadr` i `~/.local/share/applications/local.Kadr.desktop` to jest dokładnie to, co jest w repo.

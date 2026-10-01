@@ -32,6 +32,7 @@ GAP = 6             # odstęp między miniaturami
 SB = 12             # stały zapas pod/obok miniatur na nakładkowy suwak (nie zależy od pomiarów)
 SIDE_PAD = 18       # marginesy panelu w trybie sidebar (6 + 12)
 SIDE_MIN = 240
+COUNT_MIN = 120     # px: tyle miejsca na tekst "Obrazy: …" musi zostać obok przycisków, inaczej „Wyczyść” zawija się pod „Odznacz”
 SIDE_DEFAULT = 300
 CANVAS_MIN = 480    # minimalna szerokość pola kadrowania — panel boczny nigdy jej nie zabierze
 LEFT_PAD = 24       # marginesy (12 + 12) wokół pola kadrowania
@@ -40,6 +41,14 @@ ROWS_OVERHEAD = 420  # wysokość okna zajęta przez resztę interfejsu (do limi
 WIN_W, WIN_H = 900, 700
 SCALE_TOL = 0.01    # tolerancja proporcji, przy której obrazy uznajemy za „takie same”
 SCALE_TAG = '%'     # znacznik kadru przeskalowanego pod dany obraz (jak #N przy kadrze indywidualnym)
+
+LOUPE_R = 100        # promień lupki (px)
+LOUPE_ZOOM = 6      # powiększenie lupki: tyle pikseli ekranu na jeden piksel obrazu
+LOUPE_M = 10        # odstęp lupki od krawędzi pola kadrowania
+LOUPE_HOLD = 1400   # ms: jak długo lupka zostaje po zmianie kadru polem liczbowym
+HIST_MAX = 100      # maks. liczba kroków cofania kadru
+RATIOS = (('1:1', '1:1 — kwadrat'), ('5:4', '5:4'), ('4:3', '4:3'), ('3:2', '3:2'), ('16:10', '16:10'),
+          ('16:9', '16:9'), ('2:1', '2:1'), ('21:9', '21:9'), ('img', 'Jak obraz'))
 
 NAV_FIRST = 380     # ms: po tylu przytrzymana strzałka zaczyna przewijać
 NAV_STEP = 70       # ms: minimalny odstęp między kolejnymi obrazami
@@ -55,9 +64,9 @@ PANEL_TIP = {
     'hidden': 'Panel ukryty.\nKliknij, aby pokazać go na dole.',
 }
 # pozycje widgetów pól kadru w siatce: (kolumna, wiersz, szerokość)
-GRID_BOTTOM = [(i, 0, 1) for i in range(10)]
-GRID_SIDE = [(0, 0, 1), (1, 0, 1), (0, 1, 1), (1, 1, 1), (0, 2, 1), (1, 2, 1), (0, 3, 1), (1, 3, 1),
-             (0, 4, 2), (0, 5, 2)]
+GRID_BOTTOM = [(i, 0, 1) for i in range(11)]
+GRID_SIDE = [(0, 0, 1), (1, 0, 1), (2, 0, 1), (3, 0, 1), (0, 1, 1), (1, 1, 1), (2, 1, 1), (3, 1, 1),
+             (0, 2, 4)]
 
 HINT = ('Wybierz jeden lub wiele obrazów — wszystkie dostaną ten sam kadr.',
         'Kolejne obrazy dodają się do listy (duplikaty są pomijane).',
@@ -92,6 +101,8 @@ CSS = """
 .canvas.drop-hover { box-shadow: inset 0 0 0 2px #487cdf; }
 .grip { background: transparent; border-radius: 4px; }
 .grip:hover, .grip.drag { background: alpha(#487cdf, .35); }
+.slim-spin button { min-width: 22px; padding-left: 0; padding-right: 0; }
+.slim-spin text { min-width: 0; }
 """
 
 
@@ -334,7 +345,8 @@ def out_name(path, scheme, now, nr):
     return apply_scheme(scheme, root, now, nr) + ext, fmt
 
 
-def shade(cr, ox, oy, w, h, sel, s, color=ACCENT, label=None, fs=12, bounds=None, overflow=False):
+def shade(cr, ox, oy, w, h, sel, s, color=ACCENT, label=None, fs=12, bounds=None, overflow=False,
+          dark=True):
     """Przyciemnia obszar poza kadrem, rysuje ramkę w danym kolorze i opcjonalną plakietkę (#N, %)."""
     if not sel:
         return
@@ -345,11 +357,12 @@ def shade(cr, ox, oy, w, h, sel, s, color=ACCENT, label=None, fs=12, bounds=None
     x1, y1 = min(max(fx1, 0), w), min(max(fy1, 0), h)
     inside = x1 > x0 and y1 > y0
     cr.set_fill_rule(cairo.FillRule.EVEN_ODD)
-    cr.rectangle(ox, oy, w, h)
-    if inside:
-        cr.rectangle(ox + x0, oy + y0, x1 - x0, y1 - y0)
-    cr.set_source_rgba(0, 0, 0, .6)
-    cr.fill()
+    if dark:        # w trakcie przeciągania kadru nic nie jest przyciemniane — widać, co się kadruje
+        cr.rectangle(ox, oy, w, h)
+        if inside:
+            cr.rectangle(ox + x0, oy + y0, x1 - x0, y1 - y0)
+        cr.set_source_rgba(0, 0, 0, .6)
+        cr.fill()
     if overflow and fx1 > fx0 and fy1 > fy0:
         # overflow (podgląd): ramka obejmuje cały kadr, a część poza obrazem dostaje lekki odcień
         cr.rectangle(ox + fx0, oy + fy0, fx1 - fx0, fy1 - fy0)
@@ -445,6 +458,23 @@ def draw_crop_icon(cr, c, active):
     cr.stroke()
 
 
+def draw_ratio_icon(cr, c, state):
+    """Ikona „proporcje kadru”: ramka z dwoma narożnikami."""
+    cr.set_source_rgba(c.red, c.green, c.blue, c.alpha)
+    cr.set_line_width(1.4)
+    cr.rectangle(1.7, 3.2, 12.6, 9.6)
+    cr.stroke()
+    cr.set_line_width(1.5)
+    cr.move_to(4.2, 7.4)
+    cr.line_to(4.2, 5.6)
+    cr.line_to(6.2, 5.6)
+    cr.stroke()
+    cr.move_to(11.8, 8.6)
+    cr.line_to(11.8, 10.4)
+    cr.line_to(9.8, 10.4)
+    cr.stroke()
+
+
 def draw_copy_icon(cr, c, done):
     """Ikona „kopiuj polecenie”: dwie kartki ze znakiem zachęty (>_); po skopiowaniu zielony ptaszek."""
     cr.set_line_width(1.4)
@@ -529,6 +559,7 @@ class CropArea(Gtk.DrawingArea):
         'changed': (GObject.SignalFlags.RUN_FIRST, None, ()),
         'zoom-changed': (GObject.SignalFlags.RUN_FIRST, None, ()),
         'open-request': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'edit-end': (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
     def __init__(self):
@@ -537,6 +568,9 @@ class CropArea(Gtk.DrawingArea):
         self.pix = self.scaled = self.sel = self.key = self.op = None
         self.want = None            # widok do zastosowania, gdy pole dostanie rozmiar
         self.color, self.label = ACCENT, None
+        self.lp = None              # punkt obrazu pokazywany w lupce (x, y) albo None
+        self.lc = None              # róg pola, w którym stoi lupka
+        self.lt = 0                 # timer chowania lupki po zmianie kadru polem liczbowym
         self.status = None          # tekst na pustym polu (np. „Ładowanie obrazów…”)
         self.zoom, self.panx, self.pany = 1.0, 0.0, 0.0
         self.mx = self.my = 0
@@ -707,6 +741,7 @@ class CropArea(Gtk.DrawingArea):
     def set_pix(self, pix):
         """Zmienia wyświetlany obraz — kadr (self.sel) ustawia okno."""
         self.pix, self.key, self.want = pix, None, None
+        self.loupe_off()
         self.zoom, self.panx, self.pany = 1.0, 0.0, 0.0
         self.set_cursor_from_name(None)
         self.queue_draw()
@@ -714,6 +749,7 @@ class CropArea(Gtk.DrawingArea):
 
     def clear(self):
         self.pix = self.scaled = self.key = self.want = None
+        self.loupe_off()
         self.zoom, self.panx, self.pany = 1.0, 0.0, 0.0
         self.set_cursor_from_name('pointer')
         self.queue_draw()
@@ -766,7 +802,112 @@ class CropArea(Gtk.DrawingArea):
                 self.key = key
             Gdk.cairo_set_source_pixbuf(cr, self.scaled, ox + vx0 * s, oy + vy0 * s)
             cr.paint()
-        shade(cr, ox, oy, pw * s, ph * s, self.sel, s, self.color, self.label, 13, (W, H), True)
+        shade(cr, ox, oy, pw * s, ph * s, self.sel, s, self.color, self.label, 13, (W, H), True,
+              dark=self.op is None and self.lp is None)
+        if self.lp is not None:
+            ax, ay = ox + self.lp[0] * s, oy + self.lp[1] * s
+            cr.arc(ax, ay, 3.5, 0, 2 * math.pi)
+            cr.set_source_rgb(0, 0, 0)
+            cr.fill()
+            cr.arc(ax, ay, 2, 0, 2 * math.pi)
+            cr.set_source_rgb(1, 1, 1)
+            cr.fill()
+            self.draw_loupe(cr, W, H, s, ox, oy)
+
+    # --- lupka ---
+    def loupe_off(self):
+        if self.lt:
+            GLib.source_remove(self.lt)
+            self.lt = 0
+        self.lc = None
+        if self.lp is not None:
+            self.lp = None
+            self.queue_draw()
+
+    def loupe_tick(self):
+        self.lt = 0
+        if not self.op:
+            self.loupe_off()
+        return GLib.SOURCE_REMOVE
+
+    def loupe_edge(self, k):
+        """Lupka na krawędzi kadru zmienionej polem liczbowym (x/y/w/h) — chowa się sama po chwili."""
+        v = self.vis()
+        if not v:
+            return
+        x0, y0, x1, y1 = v
+        self.lp = {'x': (x0, (y0 + y1) / 2), 'y': ((x0 + x1) / 2, y0),
+                   'w': (x1, (y0 + y1) / 2), 'h': ((x0 + x1) / 2, y1)}[k]
+        if self.lt:
+            GLib.source_remove(self.lt)
+        self.lt = GLib.timeout_add(LOUPE_HOLD, self.loupe_tick)
+        self.queue_draw()
+
+    def loupe_pt(self, dx, dy):
+        """Punkt obrazu, który właśnie ruszasz: narożnik, punkt na krawędzi albo najbliższy róg przy przesuwaniu."""
+        X, Y, w, h = self.sel
+        px, py = self.to_img(self.p0[0] + dx, self.p0[1] + dy)
+        if self.op == 'new':
+            ax, ay = self.anchor
+            return (X if px < ax else X + w), (Y if py < ay else Y + h)
+        if self.op == 'move':
+            right, bottom = self.corner
+            return X + (w if right else 0), Y + (h if bottom else 0)
+        l, r, t, b = self.op
+        return ((X if l else X + w if r else min(max(px, X), X + w)),
+                (Y if t else Y + h if b else min(max(py, Y), Y + h)))
+
+    def draw_loupe(self, cr, W, H, s, ox, oy):
+        """Koło z powiększonym fragmentem obrazu wokół self.lp. Stoi w rogu pola najdalszym od tego
+        punktu i przeskakuje do innego rogu dopiero, gdy punkt się do niego zbliży."""
+        px, py = self.lp
+        pw, ph = self.size
+        R = min(LOUPE_R, max(40, min(W, H) / 3))    # w małym polu kółko się zmniejsza, żeby nie zasłaniało go całego
+        L = max(LOUPE_ZOOM, s * 1.5)
+        m = R + LOUPE_M
+        pos = [(m, m), (W - m, m), (m, H - m), (W - m, H - m)]
+        ax, ay = ox + px * s, oy + py * s
+        if self.lc is None or math.hypot(ax - pos[self.lc][0], ay - pos[self.lc][1]) < R + 56:
+            self.lc = max(range(4), key=lambda i: math.hypot(ax - pos[i][0], ay - pos[i][1]))
+        lx, ly = pos[self.lc]
+        x0, y0 = max(0, math.floor(px - R / L) - 1), max(0, math.floor(py - R / L) - 1)
+        x1, y1 = min(pw, math.ceil(px + R / L) + 1), min(ph, math.ceil(py + R / L) + 1)
+        cr.save()
+        cr.arc(lx, ly, R, 0, 2 * math.pi)
+        cr.clip_preserve()
+        cr.set_source_rgb(.1, .1, .1)
+        cr.fill()
+        if x1 > x0 and y1 > y0:
+            sub = self.pix.new_subpixbuf(x0, y0, x1 - x0, y1 - y0)
+            cr.save()
+            cr.translate(lx + (x0 - px) * L, ly + (y0 - py) * L)
+            cr.scale(L, L)
+            Gdk.cairo_set_source_pixbuf(cr, sub, 0, 0)
+            cr.get_source().set_filter(cairo.Filter.NEAREST)
+            cr.paint()
+            cr.restore()
+        if self.sel:
+            X, Y, w, h = self.sel
+            sx0, sy0 = lx + (X - px) * L, ly + (Y - py) * L
+            sx1, sy1 = lx + (X + w - px) * L, ly + (Y + h - py) * L
+            cr.set_source_rgb(*self.color)
+            cr.set_line_width(2)
+            cr.rectangle(sx0, sy0, sx1 - sx0, sy1 - sy0)
+            cr.stroke()
+        cr.arc(lx, ly, 3.5, 0, 2 * math.pi)
+        cr.set_source_rgb(0, 0, 0)
+        cr.fill()
+        cr.arc(lx, ly, 2, 0, 2 * math.pi)
+        cr.set_source_rgb(1, 1, 1)
+        cr.fill()
+        cr.restore()
+        cr.arc(lx, ly, R, 0, 2 * math.pi)
+        cr.set_source_rgba(0, 0, 0, .6)
+        cr.set_line_width(5)
+        cr.stroke_preserve()
+        cr.set_source_rgb(1, 1, 1)
+        cr.set_line_width(2)
+        cr.stroke()
 
     # --- kadrowanie myszą ---
     def hit(self, x, y):
@@ -797,12 +938,17 @@ class CropArea(Gtk.DrawingArea):
 
     def on_begin(self, g, x, y):
         self.grab_focus()
+        self.loupe_off()
         self.op = self.hit(x, y) if self.pix else None
         self.p0 = (x, y)
         if self.op == 'new':
             self.anchor = self.to_img(x, y)
         elif self.op:
             self.sel0 = list(self.sel)
+            if self.op == 'move':
+                ix, iy = self.to_img(x, y)
+                X, Y, w, h = self.sel
+                self.corner = (ix > X + w / 2, iy > Y + h / 2)     # róg kadru najbliższy chwytu — jego pokazuje lupka
 
     def on_update(self, g, dx, dy):
         if not self.op:
@@ -825,15 +971,18 @@ class CropArea(Gtk.DrawingArea):
                 if t: y0 = min(max(y0 + dj, 0), y1 - 1)
                 if b: y1 = max(min(y1 + dj, max(ph, Y + h)), y0 + 1)
                 self.sel = [x0, y0, x1 - x0, y1 - y0]
+        self.lp = self.loupe_pt(dx, dy)
         self.queue_draw()
         self.emit('changed')
 
     def on_end(self, g, dx, dy):
         self.op = None
+        self.lp = self.lc = None
         if self.sel and (self.sel[2] < 1 or self.sel[3] < 1):
             self.sel = None
-            self.queue_draw()
             self.emit('changed')
+        self.queue_draw()
+        self.emit('edit-end')
 
 
 class Thumb(Gtk.DrawingArea):
@@ -869,7 +1018,7 @@ class Thumb(Gtk.DrawingArea):
         """Krzyżyk „usuń” przy rogu samego obrazka (w kwadratowej komórce miniatura jest wyśrodkowana)."""
         if self.xbtn:
             dx = 0 if self.tight else max(0, CELL - self.t.get_width()) // 2
-            dy = 0 if self.tight else max(0, CELL - self.t.get_height()) // 2
+            dy = 0
             self.xbtn.set_margin_top(4 + dy)
             self.xbtn.set_margin_end(4 + dx)
 
@@ -948,6 +1097,10 @@ class Win(Adw.ApplicationWindow):
         self.close_dlg = None
         self.view0 = st['view']     # widok do przywrócenia przy pierwszym pokazaniu bieżącego obrazu
         self.undo_m = undo_load()
+        self.hist, self.redo_st = {}, {}    # cofanie kadru: zrzuty stanu kadrów (i ponawianie)
+        self.hist_tag, self.hist_t = None, 0
+        self.dragging = False       # trwa przeciąganie kadru myszą — całe przeciągnięcie to jeden krok cofania
+        self.close_pop = None       # dymek „Zamknąć bez zapisania?” przy przycisku zamknięcia okna
         # ładowanie obrazów po jednym, w tle (okno nie zamarza)
         self.queue = []             # ścieżki czekające na załadowanie
         self.load_total = 0
@@ -964,6 +1117,7 @@ class Win(Adw.ApplicationWindow):
         self.area.connect('changed', self.on_crop)
         self.area.connect('zoom-changed', self.upd_zoom)
         self.area.connect('open-request', self.open_files)
+        self.area.connect('edit-end', self.on_edit_end)
         self.connect('close-request', self.on_close)
         self.connect('notify::default-width', self.on_geom)
         self.connect('notify::default-height', self.on_geom)
@@ -977,6 +1131,14 @@ class Win(Adw.ApplicationWindow):
         kc.connect('key-released', self.on_key_up)
         self.add_controller(kc)
 
+        # kliknięcie poza etykietą z rozmiarem obrazu zdejmuje z niej fokus (znika karetka i zaznaczenie)
+        pc = Gtk.GestureClick()
+        pc.set_button(0)
+        pc.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        pc.connect('pressed', self.on_any_press)
+        pc.connect('released', self.on_any_release)
+        self.add_controller(pc)
+
         # upuszczanie plików (przeciągnij i upuść) — działa na całym oknie
         dt = Gtk.DropTarget.new(Gdk.FileList.__gtype__, Gdk.DragAction.COPY)
         dt.connect('drop', self.on_drop)
@@ -986,12 +1148,15 @@ class Win(Adw.ApplicationWindow):
         head = Adw.HeaderBar()
         self.wtitle = Adw.WindowTitle(title=APP_TITLE, subtitle='')
         head.set_title_widget(self.wtitle)
-        b = Gtk.Button(label='Otwórz obrazy', tooltip_text='\n'.join(HINT))
+        b = Gtk.Button(child=Adw.ButtonContent(icon_name='document-open-symbolic', label='Otwórz obrazy'),
+                       css_classes=['raised'],
+                       tooltip_text='\n'.join(HINT))
         b.connect('clicked', self.open_files)
         head.pack_start(b)
 
         self.b_as = Gtk.Button(
-            label='Zapisz jako',
+            child=Adw.ButtonContent(icon_name='document-save-as-symbolic', label='Zapisz jako'),
+            css_classes=['raised'],
             tooltip_text='Zapisuje przycięte kopie wszystkich załadowanych obrazów jako nowe pliki.\n'
                          'Nazwę (schemat) można zmienić w dialogu, domyślnie '
                          '[nazwa]_RRRRMMDD-GGMMSS[rozszerzenie].\n'
@@ -1006,7 +1171,8 @@ class Win(Adw.ApplicationWindow):
         head.pack_start(self.b_as)
 
         self.b_save = Gtk.Button(
-            label='Zastąp oryginalne', css_classes=['suggested-action'],
+            label='Zastąp oryginalne',
+            css_classes=['suggested-action'],
             tooltip_text='Zastępuje oryginalne pliki przyciętymi wersjami — dotyczy wszystkich '
                          'załadowanych obrazów (każdy wg swojego kadru).\n'
                          'Kopie oryginałów są zachowywane, więc można to cofnąć przyciskiem „Cofnij”.\n'
@@ -1021,9 +1187,11 @@ class Win(Adw.ApplicationWindow):
         self.b_panel.connect('clicked', self.cycle_panel)
         self.ind_icon = Icon(draw_crop_icon)
         self.ind_n = Gtk.Label(visible=False)
+        self.ind_g = Gtk.Label(visible=False, css_classes=['green'])
         ib = Gtk.Box(spacing=4)
         ib.append(self.ind_icon)
         ib.append(self.ind_n)
+        ib.append(self.ind_g)
         self.b_ind = Gtk.Button(css_classes=['flat'], child=ib)
         self.b_ind.connect('clicked', self.toggle_indiv)
         head.pack_end(self.b_panel)
@@ -1038,7 +1206,7 @@ class Win(Adw.ApplicationWindow):
         for k, t in (('x', 'X'), ('y', 'Y'), ('w', 'Szer.'), ('h', 'Wys.')):
             sp = Gtk.SpinButton.new_with_range(0, 0, 1)
             sp.set_width_chars(5)
-            sp.connect('value-changed', self.on_spin)
+            sp.connect('value-changed', self.on_spin, k)
             sp.connect('activate', lambda s: self.area.grab_focus())
             self.spins[k] = sp
             lab = dim(t)
@@ -1047,12 +1215,20 @@ class Win(Adw.ApplicationWindow):
         self.info = dim('')
         self.info.set_selectable(True)
         self.info.set_hexpand(True)
-        self.fw.append(self.info)
+        fc = Gtk.EventControllerFocus()     # utrata fokusu czyści zaznaczenie, więc nic nie „pokutuje”
+        fc.connect('leave', lambda c: self.info.select_region(0, 0))
+        self.info.add_controller(fc)
+        # niewidoczne „sizerki” (po jednej na każdy różny opis obrazu z listy) w tej samej komórce:
+        # każda zawija się sama przy aktualnej szerokości panelu, a komórka ma wysokość najwyższej z nich
+        self.info_szs = {}
+        self.info_box = Gtk.Grid(hexpand=True)
+        self.info_box.attach(self.info, 0, 0, 1, 1)
+        self.fw.append(self.info_box)
 
         zb = Gtk.Box(css_classes=['linked'])
         self.z_out = Gtk.Button(icon_name='zoom-out-symbolic',
                                 tooltip_text='Oddal (scroll w dół nad obrazem, ↓, −)')
-        self.z_fit = Gtk.Button(label='—', width_request=64,
+        self.z_fit = Gtk.Button(label='—', width_request=56,
                                 tooltip_text='Dopasuj do okna\nScroll nad obrazem, ↑/↓, +/− — zoom\n'
                                              'Prawy/środkowy przycisk myszy — przesuwanie\n'
                                              '←/→ lub kółko myszy poza obrazem — poprzedni/następny obraz')
@@ -1073,10 +1249,44 @@ class Win(Adw.ApplicationWindow):
         nb.append(self.b_prev)
         nb.append(self.b_next)
 
+        # proporcje kadru (menu) i cofanie zmian kadru — z lewej strony przycisków zoomu
+        menu = Gio.Menu()
+        sec = Gio.Menu()
+        for key, label in RATIOS:
+            it = Gio.MenuItem.new(label, None)
+            it.set_action_and_target_value('win.ratio', GLib.Variant('s', key))
+            sec.append_item(it)
+        menu.append_section(None, sec)
+        sec2 = Gio.Menu()
+        sec2.append('Odwróć proporcje', 'win.flip')
+        sec2.append('Wyśrodkuj kadr', 'win.center')
+        menu.append_section(None, sec2)
+        a_ratio = Gio.SimpleAction.new('ratio', GLib.VariantType.new('s'))
+        a_ratio.connect('activate', lambda a, p: self.ratio_apply(p.get_string()))
+        self.add_action(a_ratio)
+        self.act_flip = Gio.SimpleAction.new('flip', None)
+        self.act_flip.connect('activate', lambda a, p: self.ratio_flip())
+        self.add_action(self.act_flip)
+        self.act_center = Gio.SimpleAction.new('center', None)
+        self.act_center.connect('activate', lambda a, p: self.ratio_center())
+        self.add_action(self.act_center)
+        rb = Gtk.Box(css_classes=['linked'])
+        self.b_ratio = Gtk.MenuButton(child=Icon(draw_ratio_icon), menu_model=menu,
+                                      tooltip_text='Proporcje kadru\nOdwracanie proporcji i wyśrodkowanie kadru')
+        self.b_hundo = Gtk.Button(icon_name='edit-undo-symbolic',
+                                  tooltip_text='Cofnij zmianę kadru (Ctrl+Z)\nCtrl+Shift+Z — ponów\n'
+                                               'Działa też na kadr zmieniany myszą i polami liczbowymi.')
+        self.b_hundo.connect('clicked', self.hist_undo)
+        rb.append(self.b_ratio)
+        rb.append(self.b_hundo)
+
         self.zrow = Gtk.Box(spacing=8)
+        self.zrow.append(rb)
         self.zrow.append(zb)
-        self.zrow.append(nb)
         self.fw.append(self.zrow)
+        self.nrow = nb
+        self.fw.append(self.nrow)
+        self.tools = Gtk.Grid(column_spacing=6, row_spacing=6, halign=Gtk.Align.START)
 
         # siatka miniatur: na dole układ kolumnami (góra→dół, potem następna kolumna), w sidebarze wierszami
         self.tgrid = Gtk.Grid(column_spacing=GAP, row_spacing=GAP, halign=Gtk.Align.START, valign=Gtk.Align.CENTER)
@@ -1088,6 +1298,15 @@ class Win(Adw.ApplicationWindow):
         self.count.set_halign(Gtk.Align.START)
         self.count.set_xalign(0)
         self.count.set_hexpand(True)
+        self.count_sz = dim('')
+        self.count_sz.set_halign(Gtk.Align.START)
+        self.count_sz.set_xalign(0)
+        self.count_sz.set_hexpand(True)
+        self.count_sz.set_opacity(0)
+        self.count_sz.set_can_target(False)
+        self.count_box = Gtk.Grid(hexpand=True)
+        self.count_box.attach(self.count, 0, 0, 1, 1)
+        self.count_box.attach(self.count_sz, 0, 0, 1, 1)
         self.b_desel = Gtk.Button(label='Odznacz', css_classes=['flat'], visible=False,
                                   tooltip_text='Czyści zaznaczenie miniatur (Esc)')
         self.b_desel.connect('clicked', lambda b: self.set_selected(set()))
@@ -1096,9 +1315,12 @@ class Win(Adw.ApplicationWindow):
         self.b_clear.connect('clicked', self.clear_all)
         top = Gtk.Box(spacing=6)
         top.append(self.spinner)
-        top.append(self.count)
-        top.append(self.b_desel)
-        top.append(self.b_clear)
+        top.append(self.count_box)
+        self.btns = Gtk.Grid(column_spacing=6, row_spacing=2)
+        self.btn_stack = False      # true: „Wyczyść” stoi pod „Odznacz” (brak miejsca w panelu bocznym)
+        self.btns.attach(self.b_desel, 0, 0, 1, 1)
+        self.btns.attach(self.b_clear, 1, 0, 1, 1)
+        top.append(self.btns)
         self.extra = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, visible=False)
         self.extra.append(top)
         self.extra.append(self.scroll)
@@ -1228,6 +1450,7 @@ class Win(Adw.ApplicationWindow):
         self.sticky_kind = None
         if not s or self.thumbs or self.queue:
             return
+        self.hist_reset()
         self.groups = dict(s['groups'])
         self.refs = dict(s['refs'])
         self.add_files(s['paths'], s['current'], s['img_groups'])
@@ -1278,6 +1501,40 @@ class Win(Adw.ApplicationWindow):
             self.nav_held = 0   # zgubione zdarzenie puszczenia klawisza
             self.nav_queue = 0
 
+    def focus_owner(self):
+        """Etykieta „Obraz: …” albo pole liczbowe (X/Y/Szer./Wys.), które ma teraz fokus; inaczej None."""
+        w = self.get_focus()
+        while w is not None and w is not self:
+            if w is self.info or isinstance(w, Gtk.SpinButton):
+                return w
+            w = w.get_parent()
+        return None
+
+    def on_any_press(self, g, n, x, y):
+        """Klik poza polem, które ma fokus (etykieta albo pole liczbowe), zdejmuje z niego fokus —
+        znika karetka i zaznaczenie. Klik w samo pole (tekst, przyciski +/−) zostaje nietknięty."""
+        if self.get_visible_dialog():
+            return
+        w = self.focus_owner()
+        if w is None:
+            return
+        ok, p = self.compute_point(w, Graphene.Point().init(x, y))
+        if ok and w.contains(p.x, p.y):
+            return
+        self.set_focus(None)
+
+    def on_any_release(self, g, n, x, y):
+        """Po kliknięciu w „Obraz: …” bez zaznaczenia żadnej litery karetka nie ma zostać."""
+        if self.focus_owner() is self.info:
+            GLib.idle_add(self.info_drop_empty)
+
+    def info_drop_empty(self):
+        if self.get_focus() is self.info:
+            ok, s, e = self.info.get_selection_bounds()
+            if not ok or s == e:
+                self.set_focus(None)
+        return GLib.SOURCE_REMOVE
+
     # --- panel: dół / prawa strona / ukryty ---
     def cycle_panel(self, _):
         self.set_panel(PANEL_MODES[(PANEL_MODES.index(self.mode) + 1) % len(PANEL_MODES)])
@@ -1310,25 +1567,56 @@ class Win(Adw.ApplicationWindow):
 
     def layout_panel(self):
         side = self.mode == 'side'
-        for w in self.fw:
-            if w.get_parent() is self.grid:
+        for w in self.fw + [self.tools]:
+            p = w.get_parent()
+            if p is self.grid:
                 self.grid.remove(w)
+            elif p is self.tools:
+                self.tools.remove(w)
         for w, (c, r, sp) in zip(self.fw, GRID_SIDE if side else GRID_BOTTOM):
             self.grid.attach(w, c, r, sp, 1)
+        if side:
+            self.grid.attach(self.tools, 0, 3, 4, 1)
+            self.tools_reflow()
+        self.grid.set_column_homogeneous(False)
+        self.grid.set_row_spacing(6 if side else 8)
+        self.info_box.set_margin_top(6 if side else 0)
+        self.info_box.set_hexpand(not side)
+        for w in (self.fw[2], self.fw[6]):      # etykiety Y i Wys.: odstęp od poprzedniego pola w tej samej linii
+            w.set_margin_start(8 if side else 0)
+        self.tools.set_margin_top(4 if side else 0)
         for sp in self.spins.values():
             sp.set_hexpand(side)
             sp.set_margin_end(0 if side else 4)
+            sp.set_width_chars(1 if side else 5)    # w sidebarze pola się rozciągają, więc nie rozpychają panelu
+            if side:
+                sp.add_css_class('slim-spin')
+            else:
+                sp.remove_css_class('slim-spin')
         self.info.set_halign(Gtk.Align.FILL)
+        self.btns_reflow()
+        va = Gtk.Align.START if side else Gtk.Align.CENTER
+        for w in (self.info_box, self.info, self.count_box, self.count, self.btns, self.b_desel, self.b_clear):
+            w.set_valign(va)
         self.info.set_xalign(0 if side else 1)
         # na dole etykiety skracają się wielokropkiem — ich długość nie może wymuszać szerokości okna
         self.info.set_wrap(side)
         self.info.set_ellipsize(Pango.EllipsizeMode.NONE if side else Pango.EllipsizeMode.END)
-        self.info.set_max_width_chars(20 if side else -1)
+        self.info.set_max_width_chars(self.info_chars() if side else -1)
         self.count.set_wrap(side)
         self.count.set_ellipsize(Pango.EllipsizeMode.NONE if side else Pango.EllipsizeMode.END)
-        self.count.set_max_width_chars(16 if side else -1)
+        self.count.set_max_width_chars(self.count_chars() if side else -1)
+        # sizerki powtarzają ustawienia etykiet; tekst przy górze komórki, żeby nic nie "pływało"
+        self.info.set_yalign(0 if side else 0.5)
+        self.count.set_yalign(0 if side else 0.5)
+        self.cfg_sz(self.count_sz, self.count)
+        for sz in self.info_szs.values():
+            self.cfg_sz(sz, self.info)
+        self.upd_desel()
         self.zrow.set_halign(Gtk.Align.START if side else Gtk.Align.END)
         self.zrow.set_hexpand(False)
+        self.nrow.set_halign(Gtk.Align.START if side else Gtk.Align.END)
+        self.nrow.set_hexpand(False)
         self.tgrid.set_halign(Gtk.Align.CENTER if side else Gtk.Align.START)
         self.tgrid.set_valign(Gtk.Align.START if side else Gtk.Align.CENTER)
         # stały zapas na nakładkowy suwak: pod miniaturami (dół) albo z prawej strony (sidebar)
@@ -1359,9 +1647,85 @@ class Win(Adw.ApplicationWindow):
         self.reflow()
         self.persist_soon()
 
+    def count_chars(self):
+        return max(8, (self.side_w - (130 if self.btn_stack else 180)) // 8)
+
+    def info_chars(self):
+        return max(12, (self.side_w - 30) // 8)
+
+    def chars(self):
+        """Zawijanie etykiet w sidebarze zależy od jego szerokości (sizerki mają to samo, co etykiety)."""
+        side = self.mode == 'side'
+        n = self.info_chars()
+        for w in [self.info] + list(self.info_szs.values()):
+            w.set_max_width_chars(n if side else -1)
+        n = self.count_chars()
+        for w in (self.count, self.count_sz):
+            w.set_max_width_chars(n if side else -1)
+
+    def cfg_sz(self, sz, lab):
+        """Sizerka powtarza ustawienia swojej etykiety; tekst przy górze komórki, żeby nic nie „pływało”."""
+        side = self.mode == 'side'
+        sz.set_yalign(0 if side else 0.5)
+        sz.set_halign(lab.get_halign())
+        sz.set_xalign(lab.get_xalign())
+        sz.set_wrap(side)
+        sz.set_ellipsize(lab.get_ellipsize())
+        sz.set_max_width_chars(lab.get_max_width_chars())
+        sz.set_visible(side)
+
+    def sync_info_sz(self, texts):
+        """Dopasowuje zestaw sizerek do aktualnych opisów obrazów (zmienia je tylko, gdy zestaw się zmienił)."""
+        have, want = set(self.info_szs), set(texts)
+        if have == want:
+            return
+        for t in have - want:
+            self.info_box.remove(self.info_szs.pop(t))
+        for t in want - have:
+            sz = dim(t)
+            sz.set_hexpand(True)
+            sz.set_opacity(0)
+            sz.set_can_target(False)
+            self.cfg_sz(sz, self.info)
+            self.info_box.attach(sz, 0, 0, 1, 1)
+            self.info_szs[t] = sz
+
+    def btns_reflow(self):
+        """„Odznacz” i „Wyczyść”: obok siebie, a gdy w panelu bocznym zostaje za mało miejsca na tekst
+        obok nich (COUNT_MIN) — „Wyczyść” wskakuje pod „Odznacz”."""
+        def wd(b):
+            return b.measure(Gtk.Orientation.HORIZONTAL, -1)[1] or 80
+        need = wd(self.b_desel) + wd(self.b_clear) + 6
+        stack = self.mode == 'side' and self.side_w - SIDE_PAD - need < COUNT_MIN
+        if stack == self.btn_stack and self.b_clear.get_parent() is self.btns:
+            return
+        self.btn_stack = stack
+        for b in (self.b_desel, self.b_clear):
+            if b.get_parent() is self.btns:
+                self.btns.remove(b)
+        self.btns.attach(self.b_desel, 0, 0, 1, 1)
+        self.btns.attach(self.b_clear, 0 if stack else 1, 1 if stack else 0, 1, 1)
+
+    def tools_reflow(self):
+        """Zoom i nawigacja w sidebarze: nawigacja stoi obok zoomu, dopóki mieści się w szerokości panelu."""
+        for w in (self.zrow, self.nrow):
+            if w.get_parent() is self.tools:
+                self.tools.remove(w)
+        zw = self.zrow.measure(Gtk.Orientation.HORIZONTAL, -1)[1]
+        nw = self.nrow.measure(Gtk.Orientation.HORIZONTAL, -1)[1]
+        self.tools.attach(self.zrow, 0, 0, 1, 1)
+        if zw + nw + 6 <= self.side_w - SIDE_PAD:
+            self.tools.attach(self.nrow, 1, 0, 1, 1)
+        else:
+            self.tools.attach(self.nrow, 0, 1, 1, 1)
+
     def set_side_w(self, w):
         self.side_w = w
         self.apply_sizes()
+        if self.mode == 'side':
+            self.btns_reflow()
+            self.chars()
+            self.tools_reflow()
         self.reflow()
         self.persist_soon()
 
@@ -1385,7 +1749,7 @@ class Win(Adw.ApplicationWindow):
         t.tight = not side
         t.cell.set_halign(Gtk.Align.CENTER)
         t.cell.set_valign(Gtk.Align.CENTER)
-        t.cell.set_size_request(CELL if side else -1, CELL if side else -1)
+        t.cell.set_size_request(CELL if side else -1, -1)
         t.place_x()
 
     def per_line(self):
@@ -1549,6 +1913,9 @@ class Win(Adw.ApplicationWindow):
         used = {t.group for t in self.thumbs if t.group} | set(self.load_groups.values())
         self.groups = {g: c for g, c in self.groups.items() if g in used}
         self.refs = {k: v for k, v in self.refs.items() if k == 0 or k in self.groups}
+        for d in (self.hist, self.redo_st):
+            for k in [k for k in d if k and k not in self.groups]:
+                del d[k]
 
     def free_gid(self):
         g = 2
@@ -1589,9 +1956,211 @@ class Win(Adw.ApplicationWindow):
         self.sync()
 
     def on_crop(self, *_):
+        if not self.dragging:
+            self.dragging = True
+            self.hist_push()        # jeden krok cofania na całe przeciągnięcie
         self.store(self.area.sel)
         self.dirty = True
         self.sync()
+
+    def on_edit_end(self, *_):
+        self.dragging = False
+        self.hist_tag = None
+
+    # --- cofanie kadru: osobna historia dla kadru ogólnego (0) i dla każdego kadru indywidualnego (#N) ---
+    def ckey(self):
+        """Klucz kadru, który właśnie edytujesz: numer grupy (#N) bieżącego obrazu albo 0 (kadr ogólny)."""
+        return self.cur.group if self.cur and self.cur.group else 0
+
+    def hist_snap(self, key):
+        c = self.general if key == 0 else self.groups.get(key)
+        return {'crop': list(c) if c else None, 'ref': self.refs.get(key)}
+
+    def hist_apply(self, key, snap):
+        c = list(snap['crop']) if snap['crop'] else None
+        if key == 0:
+            self.general = c
+        elif key in self.groups:
+            self.groups[key] = c
+        if snap['ref']:
+            self.refs[key] = snap['ref']
+        else:
+            self.refs.pop(key, None)
+
+    def hist_push(self, tag=None):
+        """Zapamiętuje stan edytowanego kadru sprzed zmiany. Kolejne zmiany z tym samym tagiem (np. seria
+        kliknięć w polu liczbowym) w krótkim odstępie czasu liczą się jako jeden krok."""
+        key = self.ckey()
+        now = GLib.get_monotonic_time() // 1000
+        mark = (key, tag) if tag else None
+        if mark and mark == self.hist_tag and now - self.hist_t < 900:
+            self.hist_t = now
+            return
+        self.hist_tag, self.hist_t = mark, now
+        snap = self.hist_snap(key)
+        h = self.hist.setdefault(key, [])
+        if h and h[-1] == snap:
+            return
+        h.append(snap)
+        del h[:-HIST_MAX]
+        self.redo_st[key] = []
+
+    def hist_reset(self):
+        self.hist, self.redo_st = {}, {}
+        self.hist_tag = None
+
+    def hist_undo(self, *_):
+        key = self.ckey()
+        h = self.hist.get(key)
+        if not h or self.saving:
+            return
+        self.redo_st.setdefault(key, []).append(self.hist_snap(key))
+        self.hist_apply(key, h.pop())
+        self.hist_after()
+
+    def hist_redo(self):
+        key = self.ckey()
+        r = self.redo_st.get(key)
+        if not r or self.saving:
+            return
+        self.hist.setdefault(key, []).append(self.hist_snap(key))
+        self.hist_apply(key, r.pop())
+        self.hist_after()
+
+    def hist_after(self):
+        self.hist_tag = None
+        self.dirty = True
+        self.area.loupe_off()
+        self.sync()
+
+    # --- proporcje kadru ---
+    def crop_set(self, new):
+        """Ustawia kadr na bieżącym obrazie jako jeden krok cofania."""
+        a = self.area
+        if not a.pix or a.sel == new:
+            return
+        self.hist_push()
+        a.sel = new
+        self.store(new)
+        self.dirty = True
+        self.sync()
+
+    def fit_box(self, cx, cy, w, h):
+        """Kadr o środku (cx, cy) i proporcjach w:h, jak największy do rozmiaru w×h, ale mieszczący się w obrazie."""
+        iw, ih = self.area.size
+        r = w / h
+        k = min(1.0, iw / w, ih / h)
+        W = max(1, min(iw, round(w * k)))
+        H = max(1, min(ih, round(W / r)))
+        X = min(max(round(cx - W / 2), 0), iw - W)
+        Y = min(max(round(cy - H / 2), 0), ih - H)
+        self.crop_set([X, Y, W, H])
+
+    def ratio_apply(self, key):
+        """Ustawia proporcję kadru: środek i pole zostają, a gdy kadru nie ma — największy możliwy na środku."""
+        a = self.area
+        if not a.pix:
+            return
+        iw, ih = a.size
+        if key == 'img':
+            r = iw / ih
+        else:
+            p, q = key.split(':')
+            r = int(p) / int(q)
+        s = a.sel
+        if s and s[2] > 0 and s[3] > 0:
+            area, cx, cy = s[2] * s[3], s[0] + s[2] / 2, s[1] + s[3] / 2
+        else:
+            area, cx, cy = iw * ih, iw / 2, ih / 2
+        w = math.sqrt(area * r)
+        self.fit_box(cx, cy, w, w / r)
+
+    def ratio_flip(self):
+        s = self.area.sel
+        if s and s[2] > 0 and s[3] > 0:
+            self.fit_box(s[0] + s[2] / 2, s[1] + s[3] / 2, s[3], s[2])
+
+    def ratio_center(self):
+        a = self.area
+        s = a.sel
+        if not (a.pix and s):
+            return
+        iw, ih = a.size
+        self.crop_set([max(0, round((iw - s[2]) / 2)), max(0, round((ih - s[3]) / 2)), s[2], s[3]])
+
+    def upd_tools(self):
+        has = self.cur is not None and self.area.pix is not None and not self.saving
+        key = self.ckey()
+        self.b_hundo.set_sensitive(bool(self.hist.get(key)) and not self.saving)
+        self.b_hundo.set_tooltip_text(
+            ('Cofnij zmianę kadru ogólnego' if key == 0 else f'Cofnij zmianę kadru indywidualnego #{key}')
+            + ' (Ctrl+Z)\nCtrl+Shift+Z — ponów\nKażdy kadr (ogólny i każdy #N) ma własną historię.\n'
+              'Działa też na kadr zmieniany myszą i polami liczbowymi.')
+        self.b_ratio.set_sensitive(has)
+        self.act_flip.set_enabled(has and bool(self.area.sel))
+        self.act_center.set_enabled(has and bool(self.area.sel))
+
+    def upd_desel(self):
+        """„Odznacz”: w sidebarze zostaje w układzie (tylko niewidoczny), żeby jego pojawienie się
+        nie zwężało tekstu obok i nie zmieniało liczby linii."""
+        on = bool(self.selected)
+        self.b_desel.set_visible(on or self.mode == 'side')
+        self.b_desel.set_opacity(1 if on else 0)
+        self.b_desel.set_can_target(on)
+        self.b_desel.set_focusable(on)
+
+    # --- pytanie o zamknięcie w dymku przy przycisku ✕ ---
+    def close_button_under_pointer(self):
+        """Przycisk zamknięcia okna, jeśli wskaźnik jest nad nim (czyli to w niego kliknięto)."""
+        w = self.tv.pick(self.mp[0], self.mp[1], Gtk.PickFlags.DEFAULT)
+        while w is not None and w is not self.tv:
+            if isinstance(w, Gtk.Button) and w.has_css_class('close') and w.get_mapped():
+                return w
+            w = w.get_parent()
+        return None
+
+    def ask_close_pop(self, btn):
+        pop = Gtk.Popover(autohide=True, has_arrow=True, position=Gtk.PositionType.BOTTOM)
+        pop.set_parent(btn)
+        head_l = Gtk.Label(label='Zamknąć bez zapisania kadru?', css_classes=['heading'], xalign=0, wrap=True,
+                           max_width_chars=32)
+        body_l = dim('Kadr nie został zapisany w żadnym obrazie. Przy następnym uruchomieniu wróci '
+                     'razem z listą obrazów, a pliki na dysku zostaną bez zmian.')
+        body_l.set_wrap(True)
+        body_l.set_xalign(0)
+        body_l.set_max_width_chars(32)
+        b_back = Gtk.Button(label='Wróć')
+        b_close = Gtk.Button(label='Zamknij', css_classes=['destructive-action'])
+        btns = Gtk.Box(spacing=8, homogeneous=True, margin_top=4)
+        btns.append(b_back)
+        btns.append(b_close)
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6,
+                      margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
+        for w in (head_l, body_l, btns):
+            col.append(w)
+        pop.set_child(col)
+        pop.set_default_widget(b_back)
+        b_back.connect('clicked', lambda b: pop.popdown())
+        b_close.connect('clicked', lambda b: self.pop_close(pop))
+        pop.connect('closed', self.on_pop_closed)
+        self.close_pop = pop
+        pop.popup()
+        b_back.grab_focus()
+        return True
+
+    def pop_close(self, pop):
+        self.force_close = True
+        pop.popdown()
+        GLib.idle_add(self.close_now)
+
+    def close_now(self):
+        self.close()
+        return GLib.SOURCE_REMOVE
+
+    def on_pop_closed(self, pop):
+        if self.close_pop is pop:
+            self.close_pop = None
+        pop.unparent()
 
     # --- zamykanie okna ---
     def is_dirty(self):
@@ -1604,8 +2173,11 @@ class Win(Adw.ApplicationWindow):
         if self.force_close or not self.is_dirty():
             self.persist()
             return False
-        if self.close_dlg:
+        if self.close_dlg or self.close_pop:
             return True
+        btn = self.close_button_under_pointer()
+        if btn is not None:
+            return self.ask_close_pop(btn)      # kliknięto ✕ — pytanie w dymku przy nim
         d = Adw.AlertDialog(heading='Zamknąć bez zapisania kadru?',
                             body='Kadr nie został zapisany w żadnym obrazie. Przy następnym uruchomieniu '
                                  'wróci razem z listą obrazów, a pliki na dysku zostaną bez zmian.')
@@ -1627,7 +2199,7 @@ class Win(Adw.ApplicationWindow):
 
     # --- klawiatura i kółko ---
     def on_key(self, ctrl, keyval, keycode, state):
-        if self.get_visible_dialog() or isinstance(self.get_focus(), Gtk.Editable):
+        if self.close_pop or self.get_visible_dialog() or isinstance(self.get_focus(), Gtk.Editable):
             return False
         if self.saving:
             return True         # w trakcie zapisu skróty klawiszowe są wyłączone
@@ -1639,12 +2211,24 @@ class Win(Adw.ApplicationWindow):
             if keyval in (Gdk.KEY_a, Gdk.KEY_A):
                 self.set_selected(set(self.thumbs))
                 return True
+            if keyval in (Gdk.KEY_z, Gdk.KEY_Z):
+                if state & Gdk.ModifierType.SHIFT_MASK:
+                    self.hist_redo()
+                else:
+                    self.hist_undo()
+                return True
+            if keyval in (Gdk.KEY_y, Gdk.KEY_Y):
+                self.hist_redo()
+                return True
         if state & (ctrl_m | alt_m):
             return False
         if keyval == Gdk.KEY_Escape:
-            if not self.selected:
+            if self.get_focus() is self.info:
+                self.set_focus(None)
+            elif not self.selected:
                 return False
-            self.set_selected(set())
+            else:
+                self.set_selected(set())
         elif keyval in (Gdk.KEY_Left, Gdk.KEY_KP_Left):
             self.nav_press(-1)
         elif keyval in (Gdk.KEY_Right, Gdk.KEY_KP_Right):
@@ -1774,6 +2358,9 @@ class Win(Adw.ApplicationWindow):
         self.ind_icon.set_state(active)
         self.ind_n.set_visible(multi)
         self.ind_n.set_text(str(len(ts)))
+        gids = sorted({t.group for t in ts if t.group}) if active else []
+        self.ind_g.set_visible(bool(gids))
+        self.ind_g.set_text(' '.join(f'#{g}' for g in gids[:2]) + ('…' if len(gids) > 2 else ''))
         if active:
             self.ind_n.add_css_class('green')
         else:
@@ -1805,10 +2392,12 @@ class Win(Adw.ApplicationWindow):
             txt = f'Obrazy: {n}' + (f' · zaznaczone: {k}' if k else '')
             if n > 1:
                 if self.mode == 'side':
-                    txt += '\n' + NAV_HINT[0].upper() + NAV_HINT[1:]
+                    txt += ' · ' + NAV_HINT[0].upper() + NAV_HINT[1:]
                 else:
                     txt += ' · ' + NAV_HINT
         self.count.set_text(txt)
+        big = str(len(self.thumbs) + len(self.queue))
+        self.count_sz.set_text(f'Obrazy: {big} · zaznaczone: {big} · {NAV_HINT[0].upper() + NAV_HINT[1:]}')
 
     def upd_title(self):
         cur, n = self.cur, len(self.thumbs)
@@ -2014,6 +2603,7 @@ class Win(Adw.ApplicationWindow):
                         'img_groups': img_groups,
                         'dirty': self.dirty}
         self.cancel_load()
+        self.hist_reset()
         self.view0 = None
         for t in self.thumbs:
             if t.cell.get_parent() is self.tgrid:
@@ -2117,15 +2707,30 @@ class Win(Adw.ApplicationWindow):
             self.area.clear()
         self.sync()
 
-    def on_spin(self, *_):
+    def on_spin(self, sp=None, key=None):
         if self.lock:
             return
         mw, mh = self.maxdim
         x, y, w, h = (int(self.spins[k].get_value()) for k in 'xywh')
         x, y = min(x, mw - 1), min(y, mh - 1)
+        self.hist_push('spin')
         self.store([x, y, max(1, min(w, mw - x)), max(1, min(h, mh - y))])
         self.dirty = True
         self.sync()
+        if key:
+            self.area.loupe_edge(key)
+
+    def info_text(self, t):
+        iw, ih = t.dims
+        c = self.crop_of(t)
+        txt = f'Obraz: {iw}×{ih} px'
+        if t.group:
+            txt += f' · kadr indywidualny #{t.group}'
+        if c and self.ratio(t):
+            txt += ' · kadr przeskalowany pod ten obraz'
+        if c and (c[0] >= iw or c[1] >= ih):
+            txt += ' · kadr poza obrazem'
+        return txt
 
     def sync(self):
         a, n, cur = self.area, len(self.thumbs), self.cur
@@ -2144,15 +2749,12 @@ class Win(Adw.ApplicationWindow):
             self.spins[k].set_value(v)
         self.lock = False
 
+        # sizerki: różne opisy obrazów z listy (najdłuższe z nich) — wysokość pola = najwyższy opis
+        # przy bieżącej szerokości panelu, więc nic nie skacze przy przełączaniu obrazów
+        info_all = [self.info_text(t) for t in self.thumbs]
+        self.sync_info_sz(sorted(set(info_all), key=lambda s: (-len(s), s))[:8])
         if cur:
-            pw, ph = a.size
-            txt = f'Obraz: {pw}×{ph} px'
-            if cur.group:
-                txt += f' · kadr indywidualny #{cur.group}'
-            if s and self.ratio(cur):
-                txt += ' · kadr przeskalowany pod ten obraz'
-            if s and not a.vis():
-                txt += ' · kadr poza obrazem'
+            txt = self.info_text(cur)
             self.info.set_text(txt)
             self.info.set_tooltip_text(txt)
         else:
@@ -2164,7 +2766,7 @@ class Win(Adw.ApplicationWindow):
         self.b_save.set_sensitive(can)
         self.b_as.set_sensitive(can)
         self.bgrip.set_visible(self.mode == 'bottom' and n > 0)
-        self.b_desel.set_visible(len(self.selected) > 0)
+        self.upd_desel()
         a.queue_draw()
         for t in self.thumbs:
             t.current = t is cur
@@ -2179,6 +2781,7 @@ class Win(Adw.ApplicationWindow):
         self.b_prev.set_sensitive(i > 0)
         self.b_next.set_sensitive(0 <= i < n - 1)
         self.upd_indiv()
+        self.upd_tools()
         self.upd_loading()
         self.persist_soon()
 
@@ -2626,6 +3229,7 @@ class Win(Adw.ApplicationWindow):
         changed = set()
         if overwrite and done:
             # oryginały są już przycięte — te same kadry drugi raz nie miałyby sensu
+            self.hist_reset()
             self.general = None
             self.groups = {}
             self.refs = {}
@@ -2704,6 +3308,7 @@ class Win(Adw.ApplicationWindow):
         self.upd_undo()
         if ok and not self.has_crops():
             # przywracamy kadr ogólny, grupy (#N), wzorce kadrów i przynależność obrazów do grup
+            self.hist_reset()
             gs = parse_groups(m.get('groups'))
             self.general = m['crop'] if valid_crop(m.get('crop')) else None
             self.groups = gs
