@@ -55,7 +55,8 @@ input[type=text]{width:100%;height:34px;border:0;border-radius:6px;background:rg
 <div id="toasts"></div><div class="menu" id="menu"></div><input type="file" id="fi" multiple accept="image/*" hidden>
 <script>
 const langParam=new URLSearchParams(location.search).get('lang');
-const EN=langParam!==null?/^en(?:-|$)/i.test(langParam):(navigator.languages||[navigator.language]).some(l=>/^en(?:-|$)/i.test(l));
+const preferredLanguage=navigator.languages?.[0]||navigator.language||'';
+const EN=langParam!==null?/^en(?:-|$)/i.test(langParam):/^en(?:-|$)/i.test(preferredLanguage);
 const UI=new Map([
 ['Kadrowanie zbiorcze','Batch Image Cropper'],
 ['Eksperymentalne demo kadrowania wielu obrazów tym samym kadrem.','Experimental demo for cropping multiple images with the same crop area.'],
