@@ -36,8 +36,8 @@ TARBALL="$PKG-$VER.tar.gz"
 AUR_URL="ssh://aur@aur.archlinux.org/${PKG}.git"
 PKG_PAGE="https://aur.archlinux.org/packages/${PKG}"
 
-say() { printf '-> %s\n' "$*"; }
-die() { printf '!! %s\n' "$*" >&2; exit 1; }
+say() { printf -- '-> %s\n' "$*"; }
+die() { printf -- '!! %s\n' "$*" >&2; exit 1; }
 
 # 0) porządek: brak niescommitowanych zmian i tag musi już być wypchnięty
 git diff --quiet || die "drzewo ma niescommitowane zmiany — commit najpierw"
