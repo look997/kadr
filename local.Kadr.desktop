@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Kadr
+GenericName=Kadrowanie zbiorcze obrazów
+Comment=Kadruje wiele obrazów naraz tym samym kadrem
+Keywords=kadr;crop;przytnij;obraz;zbiorcze;masowe;
+Exec=kadr %F
+Icon=local.Kadr
+Terminal=false
+StartupNotify=true
+Categories=Graphics;GTK;
+MimeType=image/png;image/jpeg;image/gif;image/bmp;image/tiff;image/webp;image/avif;image/heif;image/x-icon;

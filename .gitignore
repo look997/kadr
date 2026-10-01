@@ -1,0 +1,13 @@
+# lokalne pozostałości po instalacji i budowie AUR
+pkg/
+src/
+*.pkg.tar.zst
+*.sig
+
+# python
+__pycache__/
+*.py[cod]
+
+# edytory
+*~
+*.swp

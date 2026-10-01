@@ -1,0 +1,2772 @@
+#!/usr/bin/env python3
+import os, re, sys, json, math, shutil, subprocess, threading, functools, time
+from datetime import datetime
+import gi
+gi.require_version('Gtk', '4.0')
+gi.require_version('Gdk', '4.0')
+gi.require_version('Adw', '1')
+gi.require_version('GdkPixbuf', '2.0')
+gi.require_version('Graphene', '1.0')
+gi.require_version('Pango', '1.0')
+from gi.repository import Adw, Gtk, Gdk, GdkPixbuf, Gio, GLib, GObject, Graphene, Pango
+import cairo
+
+APP_TITLE = 'Kadrowanie zbiorcze'
+ACCENT = (0x48 / 255, 0x7c / 255, 0xdf / 255)
+GREEN = (0x3e / 255, 0xc4 / 255, 0x6d / 255)
+YELLOW = (0xf5 / 255, 0xc2 / 255, 0x11 / 255)
+DIM = (0xa7 / 255,) * 3
+FORMATS = GdkPixbuf.Pixbuf.get_formats()
+WRITABLE = {e: f.get_name() for f in FORMATS if f.is_writable() for e in f.get_extensions()}
+STATE = os.path.join(GLib.get_user_config_dir(), 'kadr', 'state.json')
+OLD_STATE = os.path.join(GLib.get_user_config_dir(), 'kadr', 'crop.json')
+UNDO_DIR = os.path.join(GLib.get_user_cache_dir(), 'kadr', 'undo')
+UNDO_MAN = os.path.join(UNDO_DIR, 'manifest.json')
+PASTE_DIR = os.path.join(GLib.get_user_cache_dir(), 'kadr', 'pasted')
+DEFAULT_SCHEME = '[nazwa]_%Y%m%d-%H%M%S'
+MAX_SCALE = 64
+ZOOM_STEP = 1.25
+
+CELL = 128          # bok komórki miniatury
+GAP = 6             # odstęp między miniaturami
+SB = 12             # stały zapas pod/obok miniatur na nakładkowy suwak (nie zależy od pomiarów)
+SIDE_PAD = 18       # marginesy panelu w trybie sidebar (6 + 12)
+SIDE_MIN = 240
+SIDE_DEFAULT = 300
+CANVAS_MIN = 480    # minimalna szerokość pola kadrowania — panel boczny nigdy jej nie zabierze
+LEFT_PAD = 24       # marginesy (12 + 12) wokół pola kadrowania
+GRIP_W = 10         # szerokość uchwytu zmiany rozmiaru panelu
+ROWS_OVERHEAD = 420  # wysokość okna zajęta przez resztę interfejsu (do limitu wierszy)
+WIN_W, WIN_H = 900, 700
+SCALE_TOL = 0.01    # tolerancja proporcji, przy której obrazy uznajemy za „takie same”
+SCALE_TAG = '%'     # znacznik kadru przeskalowanego pod dany obraz (jak #N przy kadrze indywidualnym)
+
+NAV_FIRST = 380     # ms: po tylu przytrzymana strzałka zaczyna przewijać
+NAV_STEP = 70       # ms: minimalny odstęp między kolejnymi obrazami
+NAV_QUEUE = 4       # maks. zaległych kroków z kółka myszy
+
+SAVE_DELAY = 350    # ms: okno postępu zapisu pojawia się dopiero, gdy zapis trwa dłużej niż tyle
+NEMO_ALL = (6, 8)   # od tej wersji Nemo (poprawka ShowItems z maja 2026) zaznacza w jednym oknie wszystkie pliki z folderu
+
+PANEL_MODES = ('bottom', 'side', 'hidden')
+PANEL_TIP = {
+    'bottom': 'Panel: na dole.\nKliknij, aby przenieść go na prawo.',
+    'side': 'Panel: po prawej.\nKliknij, aby go ukryć.',
+    'hidden': 'Panel ukryty.\nKliknij, aby pokazać go na dole.',
+}
+# pozycje widgetów pól kadru w siatce: (kolumna, wiersz, szerokość)
+GRID_BOTTOM = [(i, 0, 1) for i in range(10)]
+GRID_SIDE = [(0, 0, 1), (1, 0, 1), (0, 1, 1), (1, 1, 1), (0, 2, 1), (1, 2, 1), (0, 3, 1), (1, 3, 1),
+             (0, 4, 2), (0, 5, 2)]
+
+HINT = ('Wybierz jeden lub wiele obrazów — wszystkie dostaną ten sam kadr.',
+        'Kolejne obrazy dodają się do listy (duplikaty są pomijane).',
+        'Możesz też przeciągnąć je na okno albo wkleić przez Ctrl+V.')
+
+SCHEME_HELP = ('Kody daty: %Y rok, %m miesiąc, %d dzień, %H godzina, %M minuta, %S sekunda. '
+               '[nazwa] to oryginalna nazwa pliku, [nr] — numer obrazu na liście. '
+               'Rozszerzenie dodaje się samo.')
+
+NAV_HINT = 'użyj ←/→ lub kółka myszy'
+
+CSS = """
+@define-color window_bg_color #1f1f1e;
+@define-color window_fg_color #fff;
+@define-color view_bg_color #1f1f1e;
+@define-color view_fg_color #fff;
+@define-color headerbar_bg_color #1f1f1e;
+@define-color headerbar_fg_color #fff;
+@define-color headerbar_backdrop_color #1f1f1e;
+@define-color dialog_bg_color #1f1f1e;
+@define-color dialog_fg_color #fff;
+@define-color popover_bg_color #1f1f1e;
+@define-color popover_fg_color #fff;
+@define-color card_bg_color alpha(#fff, .06);
+@define-color accent_bg_color #487cdf;
+@define-color accent_fg_color #fff;
+@define-color accent_color #487cdf;
+.dim { color: #a7a7a7; }
+.green { color: #3ec46d; }
+.canvas { background: alpha(#000, .25); border-radius: 8px; }
+.canvas:focus-visible { outline: none; }
+.canvas.drop-hover { box-shadow: inset 0 0 0 2px #487cdf; }
+.grip { background: transparent; border-radius: 4px; }
+.grip:hover, .grip.drag { background: alpha(#487cdf, .35); }
+"""
+
+
+def valid_crop(v):
+    return (isinstance(v, list) and len(v) == 4 and all(isinstance(i, int) for i in v)
+            and v[0] >= 0 and v[1] >= 0 and v[2] > 0 and v[3] > 0)
+
+
+def valid_ref(v):
+    return isinstance(v, list) and len(v) == 2 and all(isinstance(i, int) and i > 0 for i in v)
+
+
+def parse_groups(raw):
+    """Kadry indywidualne (#N) z JSON-a: klucze tekstowe -> liczby, tylko poprawne kadry."""
+    out = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            try:
+                g = int(k)
+            except (TypeError, ValueError):
+                continue
+            if g >= 2 and (v is None or valid_crop(v)):
+                out[g] = v
+    return out
+
+
+def parse_refs(raw):
+    """Wzorce kadrów: numer grupy (0 = kadr ogólny) -> rozmiar obrazu, na którym kadr zaznaczono."""
+    out = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            try:
+                g = int(k)
+            except (TypeError, ValueError):
+                continue
+            if g >= 0 and valid_ref(v):
+                out[g] = tuple(v)
+    return out
+
+
+def parse_img_groups(raw, groups):
+    out = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            if isinstance(k, str) and isinstance(v, int) and v in groups:
+                out[k] = v
+    return out
+
+
+def parse_view(raw):
+    """Zapamiętany widok: obraz, zoom (względem dopasowania) i środek widoku jako ułamki obrazu."""
+    if not isinstance(raw, dict) or not isinstance(raw.get('path'), str):
+        return None
+    try:
+        z, cx, cy = float(raw['zoom']), float(raw['cx']), float(raw['cy'])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not all(math.isfinite(v) for v in (z, cx, cy)) or z <= 1.0:
+        return None
+    return {'path': raw['path'], 'zoom': z, 'cx': min(max(cx, 0.0), 1.0), 'cy': min(max(cy, 0.0), 1.0)}
+
+
+def load_state():
+    """Stan sesji: kadr, grupy kadrów indywidualnych, obrazy, aktywny obraz, schemat, panel, rozmiary."""
+    st = {'crop': None, 'dirty': False, 'images': [], 'current': None, 'scheme': DEFAULT_SCHEME,
+          'groups': {}, 'img_groups': {}, 'refs': {}, 'cleared': None, 'panel': 'bottom', 'rows': 1,
+          'side_w': SIDE_DEFAULT, 'win_w': WIN_W, 'win_h': WIN_H, 'maximized': False, 'view': None}
+    for p in (STATE, OLD_STATE):
+        try:
+            with open(p) as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        if not isinstance(d, dict):
+            continue
+        if valid_crop(d.get('crop')):
+            st['crop'] = d['crop']
+        if isinstance(d.get('images'), list):
+            st['images'] = [i for i in d['images'] if isinstance(i, str)]
+        if isinstance(d.get('current'), str):
+            st['current'] = d['current']
+        if isinstance(d.get('scheme'), str) and d['scheme'].strip():
+            # starsza składnia {nazwa}/{nr} -> [nazwa]/[nr]
+            st['scheme'] = d['scheme'].replace('{nazwa}', '[nazwa]').replace('{nr}', '[nr]')
+        if d.get('panel') in PANEL_MODES:
+            st['panel'] = d['panel']
+        if isinstance(d.get('rows'), int) and 1 <= d['rows'] <= 12:
+            st['rows'] = d['rows']
+        if isinstance(d.get('side_w'), int) and SIDE_MIN <= d['side_w'] <= 2000:
+            st['side_w'] = d['side_w']
+        for k, lo in (('win_w', 400), ('win_h', 300)):
+            if isinstance(d.get(k), int) and lo <= d[k] <= 20000:
+                st[k] = d[k]
+        st['maximized'] = d.get('maximized') is True
+        st['view'] = parse_view(d.get('view'))
+        st['groups'] = parse_groups(d.get('groups'))
+        st['refs'] = parse_refs(d.get('refs'))
+        st['img_groups'] = parse_img_groups(d.get('img_groups'), st['groups'])
+        # lista wyczyszczona przyciskiem „Wyczyść” — zostaje do przywrócenia także po restarcie
+        c = d.get('cleared')
+        if isinstance(c, dict) and isinstance(c.get('paths'), list):
+            paths = [p for p in c['paths'] if isinstance(p, str)]
+            if paths:
+                cg = parse_groups(c.get('groups'))
+                st['cleared'] = {'paths': paths,
+                                 'current': c['current'] if isinstance(c.get('current'), str) else None,
+                                 'groups': cg, 'refs': parse_refs(c.get('refs')),
+                                 'img_groups': parse_img_groups(c.get('img_groups'), cg),
+                                 'dirty': c.get('dirty') is True}
+        st['dirty'] = d.get('dirty') is True and bool(st['crop'] or st['groups'])
+        break
+    return st
+
+
+def save_state(st):
+    try:
+        os.makedirs(os.path.dirname(STATE), exist_ok=True)
+        tmp = STATE + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(st, f)
+        os.replace(tmp, STATE)
+    except OSError:
+        pass
+
+
+def undo_load():
+    try:
+        with open(UNDO_MAN) as f:
+            m = json.load(f)
+        if m.get('items'):
+            return m
+    except Exception:
+        pass
+    return None
+
+
+def undo_clear():
+    shutil.rmtree(UNDO_DIR, ignore_errors=True)
+
+
+def purge_pasted(keep=(), days=7):
+    """Usuwa stare obrazy wklejone ze schowka (poza tymi, które są w zapamiętanej sesji)."""
+    now = time.time()
+    try:
+        for n in os.listdir(PASTE_DIR):
+            p = os.path.join(PASTE_DIR, n)
+            if p in keep:
+                continue
+            if now - os.path.getmtime(p) > days * 86400:
+                os.remove(p)
+    except OSError:
+        pass
+
+
+def load(path):
+    p = GdkPixbuf.Pixbuf.new_from_file(path)
+    return p.apply_embedded_orientation() or p
+
+
+def dim(text):
+    l = Gtk.Label(label=text)
+    l.add_css_class('dim')
+    return l
+
+
+def short(path):
+    home = os.path.expanduser('~')
+    return '~' + path[len(home):] if path == home or path.startswith(home + os.sep) else path
+
+
+def unique(path):
+    if not os.path.exists(path):
+        return path
+    root, ext = os.path.splitext(path)
+    i = 1
+    while os.path.exists(f'{root}-{i}{ext}'):
+        i += 1
+    return f'{root}-{i}{ext}'
+
+
+def err_text(e):
+    """Czytelna przyczyna błędu (do raportu „Szczegóły”)."""
+    if isinstance(e, GLib.Error):
+        return e.message
+    if isinstance(e, OSError):
+        return e.strerror or str(e)
+    return str(e)
+
+
+def okna(n):
+    """Odmiana: 1 okno, 2–4 okna, 5+ okien."""
+    return 'okno' if n == 1 else 'okna' if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else 'okien'
+
+
+@functools.lru_cache(maxsize=None)
+def fm_selects_all():
+    """Czy domyślny menedżer plików pokaże kilka plików z jednego folderu w jednym oknie, z zaznaczeniem
+    wszystkich. Starszy Nemo przechodził po plikach w pętli i otwierał osobne okno na każdy z nich,
+    więc dla niego (i dla nieznanych menedżerów) wybieramy bezpieczną opcję: jedno okno, jeden plik."""
+    try:
+        app = Gio.AppInfo.get_default_for_type('inode/directory', False)
+        fid = (app.get_id() or '').lower() if app else ''
+    except Exception:
+        return False
+    if fid.startswith('nemo'):
+        try:
+            out = subprocess.run(['nemo', '--version'], capture_output=True, text=True, timeout=3).stdout
+            m = re.search(r'(\d+)\.(\d+)', out)
+            return bool(m) and (int(m.group(1)), int(m.group(2))) >= NEMO_ALL
+        except (OSError, subprocess.SubprocessError):
+            return False
+    return False
+
+
+def save_dir(path):
+    """Folder domyślnego zapisu: obok oryginału; bitmapy wklejone ze schowka idą do folderu Obrazy."""
+    d = os.path.dirname(path)
+    if d == PASTE_DIR:
+        return GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_PICTURES) or os.path.expanduser('~')
+    return d
+
+
+def apply_scheme(scheme, name, now, nr):
+    """Schemat nazwy (bez rozszerzenia): kody strftime, [nazwa] i [nr]."""
+    try:
+        s = now.strftime(scheme)
+    except ValueError:
+        s = scheme
+    s = s.replace('[nr]', str(nr)).replace('[nazwa]', name)
+    s = s.replace(os.sep, '_').replace('\0', '').strip()
+    return s or name
+
+
+def out_name(path, scheme, now, nr):
+    """Nazwa pliku wynikowego wg schematu; formaty bez zapisu idą do PNG."""
+    root, ext = os.path.splitext(os.path.basename(path))
+    fmt = WRITABLE.get(ext.lower().lstrip('.'))
+    if not fmt:
+        fmt, ext = 'png', '.png'
+    return apply_scheme(scheme, root, now, nr) + ext, fmt
+
+
+def shade(cr, ox, oy, w, h, sel, s, color=ACCENT, label=None, fs=12, bounds=None, overflow=False):
+    """Przyciemnia obszar poza kadrem, rysuje ramkę w danym kolorze i opcjonalną plakietkę (#N, %)."""
+    if not sel:
+        return
+    # fx/fy — pełny kadr (może wystawać poza obraz), x/y — jego część na obrazie
+    fx0, fy0 = sel[0] * s, sel[1] * s
+    fx1, fy1 = (sel[0] + sel[2]) * s, (sel[1] + sel[3]) * s
+    x0, y0 = min(max(fx0, 0), w), min(max(fy0, 0), h)
+    x1, y1 = min(max(fx1, 0), w), min(max(fy1, 0), h)
+    inside = x1 > x0 and y1 > y0
+    cr.set_fill_rule(cairo.FillRule.EVEN_ODD)
+    cr.rectangle(ox, oy, w, h)
+    if inside:
+        cr.rectangle(ox + x0, oy + y0, x1 - x0, y1 - y0)
+    cr.set_source_rgba(0, 0, 0, .6)
+    cr.fill()
+    if overflow and fx1 > fx0 and fy1 > fy0:
+        # overflow (podgląd): ramka obejmuje cały kadr, a część poza obrazem dostaje lekki odcień
+        cr.rectangle(ox + fx0, oy + fy0, fx1 - fx0, fy1 - fy0)
+        if inside:
+            cr.rectangle(ox + x0, oy + y0, x1 - x0, y1 - y0)
+        cr.set_source_rgba(*color, .18)
+        cr.fill()
+        x0, y0, x1, y1 = fx0, fy0, fx1, fy1
+    elif not inside:
+        return
+    cr.set_source_rgb(*color)
+    cr.set_line_width(2)
+    cr.rectangle(ox + x0, oy + y0, x1 - x0, y1 - y0)
+    cr.stroke()
+    if label:
+        cr.select_font_face('sans', cairo.FontSlant.NORMAL, cairo.FontWeight.BOLD)
+        cr.set_font_size(fs)
+        parts = label.split()
+        exts = [cr.text_extents(p) for p in parts]
+        ws = [e.width + 8 for e in exts]
+        pw, ph = sum(ws), fs + 4
+        px, py = ox + x0 + 1, oy + y0 + 1    # 1 px = połowa grubości ramki: plakietka leży w środku, nie na kresce
+        if bounds:
+            px = min(max(px, 0), bounds[0] - pw)
+            py = min(max(py, 0), bounds[1] - ph)
+        # każdy człon ma własne tło: % żółte, #N w kolorze ramki (zielony przy kadrze indywidualnym)
+        for part, te, w in zip(parts, exts, ws):
+            cr.set_source_rgb(*(YELLOW if SCALE_TAG in part else color))
+            cr.rectangle(px, py, w, ph)
+            cr.fill()
+            cr.set_source_rgb(.08, .08, .08)
+            cr.move_to(px + 4 - te.x_bearing, py + ph / 2 - te.y_bearing - te.height / 2)
+            cr.show_text(part)
+            px += w
+
+
+def center_text(cr, text, W, y):
+    te = cr.text_extents(text)
+    cr.move_to((W - te.width) / 2, y)
+    cr.show_text(text)
+
+
+class Icon(Gtk.DrawingArea):
+    """Mała ikona rysowana w cairo — kolor z motywu, stan wpływa na wygląd."""
+
+    def __init__(self, fn):
+        super().__init__(content_width=16, content_height=16, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        self.fn, self.state = fn, None
+        self.set_draw_func(self.paint)
+
+    def paint(self, area, cr, W, H):
+        try:
+            c = self.get_color()
+        except AttributeError:
+            c = Gdk.RGBA()
+            c.red = c.green = c.blue = c.alpha = 1.0
+        self.fn(cr, c, self.state)
+
+    def set_state(self, state):
+        self.state = state
+        self.queue_draw()
+
+
+def draw_panel_icon(cr, c, mode):
+    cr.set_source_rgba(c.red, c.green, c.blue, c.alpha)
+    cr.set_line_width(1.4)
+    if mode == 'hidden':
+        cr.set_dash([2.2, 2.2])
+    cr.rectangle(1.7, 2.7, 12.6, 10.6)
+    cr.stroke()
+    cr.set_dash([])
+    if mode == 'bottom':
+        cr.rectangle(2.4, 9.0, 11.2, 3.6)
+        cr.fill()
+    elif mode == 'side':
+        cr.rectangle(9.4, 3.4, 4.2, 9.2)
+        cr.fill()
+
+
+def draw_crop_icon(cr, c, active):
+    if active:
+        cr.set_source_rgb(*GREEN)
+    else:
+        cr.set_source_rgba(c.red, c.green, c.blue, c.alpha)
+    cr.set_line_width(1.7)
+    cr.move_to(4.5, 1.5)
+    cr.line_to(4.5, 11.5)
+    cr.line_to(14.5, 11.5)
+    cr.stroke()
+    cr.move_to(1.5, 4.5)
+    cr.line_to(11.5, 4.5)
+    cr.line_to(11.5, 14.5)
+    cr.stroke()
+
+
+def draw_copy_icon(cr, c, done):
+    """Ikona „kopiuj polecenie”: dwie kartki ze znakiem zachęty (>_); po skopiowaniu zielony ptaszek."""
+    cr.set_line_width(1.4)
+    cr.set_line_join(cairo.LineJoin.ROUND)
+    cr.set_line_cap(cairo.LineCap.ROUND)
+    if done:
+        cr.set_source_rgb(*GREEN)
+        cr.move_to(2.5, 8.5)
+        cr.line_to(6.3, 12.3)
+        cr.line_to(13.5, 3.7)
+        cr.stroke()
+        return
+    cr.set_source_rgba(c.red, c.green, c.blue, c.alpha)
+    cr.move_to(5.5, 5.5)        # tylna kartka — widać tylko jej wystający róg
+    cr.line_to(5.5, 1.5)
+    cr.line_to(14.5, 1.5)
+    cr.line_to(14.5, 10.5)
+    cr.line_to(10.5, 10.5)
+    cr.stroke()
+    cr.rectangle(1.5, 5.5, 9, 9)    # przednia kartka
+    cr.stroke()
+    cr.move_to(3.7, 8.3)        # „>_”
+    cr.line_to(5.5, 10)
+    cr.line_to(3.7, 11.7)
+    cr.stroke()
+    cr.move_to(6.5, 12)
+    cr.line_to(8.3, 12)
+    cr.stroke()
+
+
+class Grip(Gtk.Box):
+    """Uchwyt do ręcznej zmiany rozmiaru panelu.
+
+    Przesunięcie liczone jest we współrzędnych okna, bo sam uchwyt się przesuwa
+    razem ze zmianą rozmiaru (inaczej drgałby przy przeciąganiu)."""
+
+    def __init__(self, vertical, win, begin, move):
+        super().__init__()
+        self.add_css_class('grip')
+        self.top, self.cb_begin, self.cb_move = win, begin, move
+        self.start, self.p0, self.v0 = (0, 0), (0, 0), None
+        if vertical:       # pionowy pasek -> zmiana szerokości
+            self.set_size_request(GRIP_W, -1)
+            self.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.CENTER,
+                                      vexpand=True))
+            self.set_cursor_from_name('col-resize')
+            self.set_tooltip_text('Przeciągnij, aby zmienić szerokość panelu')
+        else:              # poziomy pasek -> zmiana wysokości
+            self.set_size_request(-1, GRIP_W)
+            self.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL, valign=Gtk.Align.CENTER,
+                                      hexpand=True))
+            self.set_cursor_from_name('row-resize')
+            self.set_tooltip_text('Przeciągnij, aby zmienić wysokość panelu (liczbę wierszy miniatur)')
+        g = Gtk.GestureDrag()
+        g.set_button(1)
+        g.connect('drag-begin', self.on_begin)
+        g.connect('drag-update', self.on_update)
+        g.connect('drag-end', self.on_end)
+        self.add_controller(g)
+
+    def win_pos(self, dx, dy):
+        sx, sy = self.start
+        ok, p = self.compute_point(self.top, Graphene.Point().init(sx + dx, sy + dy))
+        return (p.x, p.y) if ok else (sx + dx, sy + dy)
+
+    def on_begin(self, g, x, y):
+        self.start = (x, y)
+        self.p0 = self.win_pos(0, 0)
+        self.v0 = self.cb_begin()
+        self.add_css_class('drag')
+
+    def on_update(self, g, dx, dy):
+        x, y = self.win_pos(dx, dy)
+        self.cb_move(self.v0, x - self.p0[0], y - self.p0[1])
+
+    def on_end(self, g, dx, dy):
+        self.remove_css_class('drag')
+
+
+class CropArea(Gtk.DrawingArea):
+    __gsignals__ = {
+        'changed': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'zoom-changed': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'open-request': (GObject.SignalFlags.RUN_FIRST, None, ()),
+    }
+
+    def __init__(self):
+        super().__init__(hexpand=True, vexpand=True, content_width=CANVAS_MIN, content_height=200, focusable=True)
+        self.add_css_class('canvas')
+        self.pix = self.scaled = self.sel = self.key = self.op = None
+        self.want = None            # widok do zastosowania, gdy pole dostanie rozmiar
+        self.color, self.label = ACCENT, None
+        self.status = None          # tekst na pustym polu (np. „Ładowanie obrazów…”)
+        self.zoom, self.panx, self.pany = 1.0, 0.0, 0.0
+        self.mx = self.my = 0
+        self.inside = False
+        self.pan_ok = False
+        self.set_draw_func(self.draw)
+        self.set_cursor_from_name('pointer')
+
+        click = Gtk.GestureClick()
+        click.set_button(1)
+        click.connect('released', lambda g, n, x, y: None if self.pix else self.emit('open-request'))
+        self.add_controller(click)
+
+        drag = Gtk.GestureDrag()
+        drag.set_button(1)
+        drag.connect('drag-begin', self.on_begin)
+        drag.connect('drag-update', self.on_update)
+        drag.connect('drag-end', self.on_end)
+        self.add_controller(drag)
+
+        pan = Gtk.GestureDrag()
+        pan.set_button(0)
+        pan.connect('drag-begin', self.pan_begin)
+        pan.connect('drag-update', self.pan_update)
+        pan.connect('drag-end', self.pan_end)
+        self.add_controller(pan)
+
+        mot = Gtk.EventControllerMotion()
+        mot.connect('motion', self.on_motion)
+        mot.connect('leave', lambda c: setattr(self, 'inside', False))
+        self.add_controller(mot)
+
+        sc = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.VERTICAL)
+        sc.connect('scroll', self.on_scroll)
+        self.add_controller(sc)
+
+        self.connect('resize', self.on_resize)
+
+    def set_drop_hover(self, on):
+        if on:
+            self.add_css_class('drop-hover')
+        else:
+            self.remove_css_class('drop-hover')
+
+    # --- geometria i zoom ---
+    @property
+    def size(self):
+        return (self.pix.get_width(), self.pix.get_height()) if self.pix else (0, 0)
+
+    def base(self):
+        pw, ph = self.size
+        W, H, pad = self.get_width(), self.get_height(), 8
+        return max(min((W - 2 * pad) / pw, (H - 2 * pad) / ph), 0.01)
+
+    def scale(self):
+        return self.base() * self.zoom
+
+    def clamp_pan(self):
+        pw, ph = self.size
+        s = self.scale()
+        mx = max(0, (pw * s - self.get_width()) / 2)
+        my = max(0, (ph * s - self.get_height()) / 2)
+        self.panx = min(max(self.panx, -mx), mx)
+        self.pany = min(max(self.pany, -my), my)
+
+    def geom(self):
+        pw, ph = self.size
+        s = self.scale()
+        W, H = self.get_width(), self.get_height()
+        return s, (W - pw * s) / 2 + self.panx, (H - ph * s) / 2 + self.pany
+
+    def zoom_to(self, z, cx=None, cy=None):
+        """Zoom względem dopasowania do okna; punkt pod (cx, cy) zostaje w miejscu."""
+        if not self.pix:
+            return
+        W, H = self.get_width(), self.get_height()
+        cx = W / 2 if cx is None else cx
+        cy = H / 2 if cy is None else cy
+        s0 = self.base()
+        z = min(max(z, 1.0), max(1.0, MAX_SCALE / s0))
+        s, ox, oy = self.geom()
+        ix, iy = (cx - ox) / s, (cy - oy) / s
+        pw, ph = self.size
+        s2 = s0 * z
+        self.zoom = z
+        self.panx = cx - ix * s2 - (W - pw * s2) / 2
+        self.pany = cy - iy * s2 - (H - ph * s2) / 2
+        if z <= 1.0:
+            self.panx = self.pany = 0.0
+        self.clamp_pan()
+        self.queue_draw()
+        self.emit('zoom-changed')
+
+    def zoom_by(self, f, at_pointer=False):
+        if at_pointer and self.inside:
+            self.zoom_to(self.zoom * f, self.mx, self.my)
+        else:
+            self.zoom_to(self.zoom * f)
+
+    def view_state(self):
+        """(zoom, cx, cy): zoom względem dopasowania i punkt obrazu w środku pola (ułamki jego rozmiaru)."""
+        if not self.pix:
+            return None
+        pw, ph = self.size
+        s, ox, oy = self.geom()
+        return self.zoom, (self.get_width() / 2 - ox) / s / pw, (self.get_height() / 2 - oy) / s / ph
+
+    def set_view(self, z, cx, cy):
+        """Przywraca zoom i przesunięcie; jeśli pole nie ma jeszcze rozmiaru, czeka na pierwszy resize."""
+        if not self.pix:
+            return
+        W, H = self.get_width(), self.get_height()
+        if W <= 16 or H <= 16:
+            self.want = (z, cx, cy)
+            return
+        pw, ph = self.size
+        s0 = self.base()
+        z = min(max(z, 1.0), max(1.0, MAX_SCALE / s0))
+        s = s0 * z
+        self.zoom = z
+        self.panx = W / 2 - cx * pw * s - (W - pw * s) / 2
+        self.pany = H / 2 - cy * ph * s - (H - ph * s) / 2
+        if z <= 1.0:
+            self.panx = self.pany = 0.0
+        self.clamp_pan()
+        self.queue_draw()
+        self.emit('zoom-changed')
+
+    def on_scroll(self, c, dx, dy):
+        self.zoom_to(self.zoom * 1.2 ** (-dy), self.mx, self.my)
+        return True
+
+    def on_resize(self, area, w, h):
+        if self.pix and self.want and w > 16 and h > 16:
+            want, self.want = self.want, None
+            self.set_view(*want)
+            return
+        if self.pix:
+            self.clamp_pan()
+        self.emit('zoom-changed')
+
+    def on_motion(self, c, x, y):
+        self.mx, self.my = x, y
+        self.inside = True
+        if not self.pan_ok:
+            self.set_cursor_from_name(self.cursor(self.hit(x, y)) if self.pix else 'pointer')
+
+    def pan_begin(self, g, x, y):
+        self.pan_ok = self.pix is not None and g.get_current_button() in (2, 3)
+        self.pan0 = (self.panx, self.pany)
+        if self.pan_ok:
+            self.set_cursor_from_name('grabbing')
+
+    def pan_update(self, g, dx, dy):
+        if not self.pan_ok:
+            return
+        self.panx, self.pany = self.pan0[0] + dx, self.pan0[1] + dy
+        self.clamp_pan()
+        self.queue_draw()
+
+    def pan_end(self, g, dx, dy):
+        if self.pan_ok:
+            self.pan_ok = False
+            self.set_cursor_from_name(None)
+            self.emit('zoom-changed')   # koniec przesuwania — zapisz widok
+
+    # --- obraz ---
+    def set_pix(self, pix):
+        """Zmienia wyświetlany obraz — kadr (self.sel) ustawia okno."""
+        self.pix, self.key, self.want = pix, None, None
+        self.zoom, self.panx, self.pany = 1.0, 0.0, 0.0
+        self.set_cursor_from_name(None)
+        self.queue_draw()
+        self.emit('zoom-changed')
+
+    def clear(self):
+        self.pix = self.scaled = self.key = self.want = None
+        self.zoom, self.panx, self.pany = 1.0, 0.0, 0.0
+        self.set_cursor_from_name('pointer')
+        self.queue_draw()
+        self.emit('zoom-changed')
+
+    def vis(self):
+        """Część kadru widoczna na bieżącym obrazie (x0, y0, x1, y1) albo None."""
+        if not self.sel or not self.pix:
+            return None
+        pw, ph = self.size
+        X, Y, w, h = self.sel
+        x0, y0, x1, y1 = max(X, 0), max(Y, 0), min(X + w, pw), min(Y + h, ph)
+        return (x0, y0, x1, y1) if x1 > x0 and y1 > y0 else None
+
+    def to_img(self, x, y):
+        s, ox, oy = self.geom()
+        pw, ph = self.size
+        return min(max((x - ox) / s, 0), pw), min(max((y - oy) / s, 0), ph)
+
+    def draw(self, area, cr, W, H):
+        if not self.pix:
+            if self.status:
+                cr.set_source_rgb(1, 1, 1)
+                cr.set_font_size(16)
+                center_text(cr, self.status, W, H / 2)
+                return
+            y = H / 2 - (30 + 20 * len(HINT)) / 2 + 16
+            cr.set_source_rgb(1, 1, 1)
+            cr.set_font_size(16)
+            center_text(cr, 'Otwórz obrazy, aby zacząć', W, y)
+            cr.set_source_rgb(*DIM)
+            cr.set_font_size(12)
+            y += 12
+            for t in HINT:
+                y += 20
+                center_text(cr, t, W, y)
+            return
+        pw, ph = self.size
+        s, ox, oy = self.geom()
+        # rysujemy tylko widoczny fragment obrazu — wynik jest ograniczony rozmiarem widgetu
+        vx0, vy0 = max(0, math.floor(-ox / s)), max(0, math.floor(-oy / s))
+        vx1, vy1 = min(pw, math.ceil((W - ox) / s)), min(ph, math.ceil((H - oy) / s))
+        if vx1 > vx0 and vy1 > vy0:
+            dw, dh = max(1, round((vx1 - vx0) * s)), max(1, round((vy1 - vy0) * s))
+            interp = GdkPixbuf.InterpType.NEAREST if s >= 3 else GdkPixbuf.InterpType.BILINEAR
+            key = (vx0, vy0, vx1, vy1, dw, dh, interp)
+            if self.key != key:
+                sub = self.pix.new_subpixbuf(vx0, vy0, vx1 - vx0, vy1 - vy0)
+                self.scaled = sub.scale_simple(dw, dh, interp)
+                self.key = key
+            Gdk.cairo_set_source_pixbuf(cr, self.scaled, ox + vx0 * s, oy + vy0 * s)
+            cr.paint()
+        shade(cr, ox, oy, pw * s, ph * s, self.sel, s, self.color, self.label, 13, (W, H), True)
+
+    # --- kadrowanie myszą ---
+    def hit(self, x, y):
+        if not self.sel:
+            return 'new'
+        s, ox, oy = self.geom()
+        X, Y, w, h = self.sel
+        l, t, r, b = ox + X * s, oy + Y * s, ox + (X + w) * s, oy + (Y + h) * s
+        m = 8
+        if not (l - m <= x <= r + m and t - m <= y <= b + m):
+            return 'new'
+        el = abs(x - l) <= m and abs(x - l) <= abs(x - r)
+        er = abs(x - r) <= m and not el
+        et = abs(y - t) <= m and abs(y - t) <= abs(y - b)
+        eb = abs(y - b) <= m and not et
+        if el or er or et or eb:
+            return (el, er, et, eb)
+        return 'move' if l <= x <= r and t <= y <= b else 'new'
+
+    @staticmethod
+    def cursor(op):
+        if op == 'new':
+            return 'crosshair'
+        if op == 'move':
+            return 'move'
+        l, r, t, b = op
+        return ('n' if t else 's' if b else '') + ('w' if l else 'e' if r else '') + '-resize'
+
+    def on_begin(self, g, x, y):
+        self.grab_focus()
+        self.op = self.hit(x, y) if self.pix else None
+        self.p0 = (x, y)
+        if self.op == 'new':
+            self.anchor = self.to_img(x, y)
+        elif self.op:
+            self.sel0 = list(self.sel)
+
+    def on_update(self, g, dx, dy):
+        if not self.op:
+            return
+        pw, ph = self.size
+        s = self.geom()[0]
+        if self.op == 'new':
+            (ax, ay), (px, py) = self.anchor, self.to_img(self.p0[0] + dx, self.p0[1] + dy)
+            self.sel = [round(min(ax, px)), round(min(ay, py)), round(abs(ax - px)), round(abs(ay - py))]
+        else:
+            X, Y, w, h = self.sel0
+            di, dj = round(dx / s), round(dy / s)
+            if self.op == 'move':
+                self.sel = [min(max(X + di, 0), max(pw - w, X)), min(max(Y + dj, 0), max(ph - h, Y)), w, h]
+            else:
+                l, r, t, b = self.op
+                x0, y0, x1, y1 = X, Y, X + w, Y + h
+                if l: x0 = min(max(x0 + di, 0), x1 - 1)
+                if r: x1 = max(min(x1 + di, max(pw, X + w)), x0 + 1)
+                if t: y0 = min(max(y0 + dj, 0), y1 - 1)
+                if b: y1 = max(min(y1 + dj, max(ph, Y + h)), y0 + 1)
+                self.sel = [x0, y0, x1 - x0, y1 - y0]
+        self.queue_draw()
+        self.emit('changed')
+
+    def on_end(self, g, dx, dy):
+        self.op = None
+        if self.sel and (self.sel[2] < 1 or self.sel[3] < 1):
+            self.sel = None
+            self.queue_draw()
+            self.emit('changed')
+
+
+class Thumb(Gtk.DrawingArea):
+    def __init__(self, path, get_info):
+        super().__init__(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER,
+                         tooltip_text=os.path.basename(path))
+        self.path, self.get_info = path, get_info
+        self.name = os.path.basename(path)
+        self.tip = None             # ostatnio ustawiona podpowiedź (żeby nie ustawiać jej bez potrzeby)
+        self.current = self.selected = False
+        self.group = None           # numer grupy kadru indywidualnego (#N) albo None
+        self.cell = None            # komórka siatki (Overlay), w której leży miniatura
+        self.xbtn = None            # przycisk „usuń z listy”
+        self.tight = False          # true: komórka dopasowana do miniatury (panel na dole)
+        self.set_cursor_from_name('pointer')
+        self.set_draw_func(self.draw)
+        self.load()
+
+    def load(self):
+        t = GdkPixbuf.Pixbuf.new_from_file_at_size(self.path, CELL, CELL)
+        o = t.get_option('orientation')
+        _, w, h = GdkPixbuf.Pixbuf.get_file_info(self.path)
+        if o in ('5', '6', '7', '8'):
+            w, h = h, w
+        self.t = t.apply_embedded_orientation() or t
+        self.dims = (w, h)
+        self.set_content_width(self.t.get_width())
+        self.set_content_height(self.t.get_height())
+        self.place_x()
+        self.queue_draw()
+
+    def place_x(self):
+        """Krzyżyk „usuń” przy rogu samego obrazka (w kwadratowej komórce miniatura jest wyśrodkowana)."""
+        if self.xbtn:
+            dx = 0 if self.tight else max(0, CELL - self.t.get_width()) // 2
+            dy = 0 if self.tight else max(0, CELL - self.t.get_height()) // 2
+            self.xbtn.set_margin_top(4 + dy)
+            self.xbtn.set_margin_end(4 + dx)
+
+    def draw(self, area, cr, W, H):
+        W, H = self.t.get_width(), self.t.get_height()
+        Gdk.cairo_set_source_pixbuf(cr, self.t, 0, 0)
+        cr.paint()
+        sel, gid, tag = self.get_info(self)
+        shade(cr, 0, 0, W, H, sel, W / self.dims[0], GREEN if gid else ACCENT, tag, 9, (W, H))
+        if self.selected:
+            cr.set_source_rgba(*ACCENT, .3)
+            cr.rectangle(0, 0, W, H)
+            cr.fill()
+            cr.set_source_rgb(*ACCENT)
+            cr.arc(W - 12, H - 12, 9, 0, 2 * math.pi)
+            cr.fill()
+            cr.set_source_rgb(1, 1, 1)
+            cr.set_line_width(2)
+            cr.move_to(W - 16, H - 12)
+            cr.line_to(W - 13, H - 9)
+            cr.line_to(W - 8, H - 15)
+            cr.stroke()
+        if self.current:
+            # ramka bieżącego obrazu jest przerywana (jasne kreski na ciemnym podkładzie),
+            # żeby różniła się od ciągłej ramki kadru także tam, gdzie kadr dochodzi do krawędzi
+            cr.set_line_width(3)
+            cr.set_source_rgba(0, 0, 0, .55)
+            cr.rectangle(1.5, 1.5, W - 3, H - 3)
+            cr.stroke()
+            cr.set_source_rgb(1, 1, 1)
+            cr.set_dash([6, 4])
+            cr.rectangle(1.5, 1.5, W - 3, H - 3)
+            cr.stroke()
+            cr.set_dash([])
+
+
+class Win(Adw.ApplicationWindow):
+    def __init__(self, app):
+        st = load_state()
+        super().__init__(application=app, title=APP_TITLE, default_width=st['win_w'],
+                         default_height=st['win_h'])
+        if st['maximized']:
+            self.maximize()
+        self.thumbs, self.cur, self.lock, self.maxdim = [], None, False, (100000, 100000)
+        self.dest = None
+        self.sacc = 0.0
+        self.nav_held = 0           # kierunek przytrzymanej strzałki (-1/0/1)
+        self.nav_queue = 0          # zaległe kroki z kółka myszy
+        self.nav_next = 0           # kiedy (ms) wolno zrobić następny krok
+        self.nav_id = 0             # id callbacku klatki
+        self.mp = (0.0, 0.0)        # pozycja wskaźnika w ToolbarView
+        self.cleared = None         # zrzut listy sprzed „Wyczyść” (do przywrócenia, także po restarcie)
+        self.sticky_toast = None    # trwały toast (nie znika sam): „Wyczyszczono listę” albo „błędy”
+        self.sticky_kind = None     # 'clear' / 'errors' — który toast ma być trwale widoczny
+        self.bumped = False         # trwały toast został zdjęty przez inny toast i ma wrócić
+        self.errors = None          # raport błędów ostatniej operacji (dialog „Szczegóły”)
+        self.saving = False         # trwa zapis (wątek w tle) — interfejs zablokowany
+        self.save_prog = None       # postęp zapisu: k/total, nazwa pliku, faza
+        self.save_dlg = None        # okno postępu zapisu (pojawia się po SAVE_DELAY)
+        self.save_timer = 0
+        self.sv_title = self.sv_bar = self.sv_file = None
+        self.scheme = st['scheme']
+        self.general = st['crop']   # kadr ogólny (obrazy bez trybu indywidualnego)
+        self.groups = dict(st['groups'])    # numer grupy (#N) -> kadr tej grupy
+        self.refs = dict(st['refs'])        # 0 (kadr ogólny) / numer grupy -> rozmiar obrazu, na którym zaznaczono kadr
+        self.selected = set()       # multiselect miniatur
+        self.anchor = None          # punkt zaczepienia dla Shift+klik
+        self.mode = 'bottom'
+        self.rows = st['rows']      # liczba wierszy miniatur w panelu na dole
+        self.side_w = st['side_w']  # szerokość panelu po prawej
+        self.lkey = None            # ostatni układ siatki miniatur
+        self.dirty = False          # kadr zmieniony i jeszcze niezapisany w obrazach
+        self.ready = False          # do końca przywracania sesji nic nie zapisujemy
+        self.ptimer = 0
+        self.force_close = False
+        self.close_dlg = None
+        self.view0 = st['view']     # widok do przywrócenia przy pierwszym pokazaniu bieżącego obrazu
+        self.undo_m = undo_load()
+        # ładowanie obrazów po jednym, w tle (okno nie zamarza)
+        self.queue = []             # ścieżki czekające na załadowanie
+        self.load_total = 0
+        self.load_done = 0
+        self.load_bad = []
+        self.load_dup = 0
+        self.load_groups = {}       # ścieżka -> numer grupy (#N) dla obrazów, które jeszcze się ładują
+        self.load_first = None      # obraz, który ma się wyświetlić jako pierwszy
+        self.load_id = 0
+        self.loading = False
+        self.restoring = bool(st['images'])
+        self.st0 = st               # sesja do przywrócenia po pokazaniu okna
+        self.area = CropArea()
+        self.area.connect('changed', self.on_crop)
+        self.area.connect('zoom-changed', self.upd_zoom)
+        self.area.connect('open-request', self.open_files)
+        self.connect('close-request', self.on_close)
+        self.connect('notify::default-width', self.on_geom)
+        self.connect('notify::default-height', self.on_geom)
+        self.connect('notify::maximized', self.on_geom)
+        self.connect('notify::is-active', self.on_active)
+        self.connect('map', self.on_map)
+
+        kc = Gtk.EventControllerKey()
+        kc.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        kc.connect('key-pressed', self.on_key)
+        kc.connect('key-released', self.on_key_up)
+        self.add_controller(kc)
+
+        # upuszczanie plików (przeciągnij i upuść) — działa na całym oknie
+        dt = Gtk.DropTarget.new(Gdk.FileList.__gtype__, Gdk.DragAction.COPY)
+        dt.connect('drop', self.on_drop)
+        dt.connect('notify::current-drop', lambda t, p: self.area.set_drop_hover(t.get_current_drop() is not None))
+        self.add_controller(dt)
+
+        head = Adw.HeaderBar()
+        self.wtitle = Adw.WindowTitle(title=APP_TITLE, subtitle='')
+        head.set_title_widget(self.wtitle)
+        b = Gtk.Button(label='Otwórz obrazy', tooltip_text='\n'.join(HINT))
+        b.connect('clicked', self.open_files)
+        head.pack_start(b)
+
+        self.b_as = Gtk.Button(
+            label='Zapisz jako',
+            tooltip_text='Zapisuje przycięte kopie wszystkich załadowanych obrazów jako nowe pliki.\n'
+                         'Nazwę (schemat) można zmienić w dialogu, domyślnie '
+                         '[nazwa]_RRRRMMDD-GGMMSS[rozszerzenie].\n'
+                         'Domyślnie obok oryginałów, w dialogu można wybrać inny folder.\n'
+                         'Środkowy przycisk myszy: zapisuje od razu, bez dialogu — '
+                         'ostatnio użytym schematem nazwy, obok oryginałów.')
+        self.b_as.connect('clicked', self.ask_save_as)
+        mg = Gtk.GestureClick()
+        mg.set_button(2)
+        mg.connect('released', self.quick_save)
+        self.b_as.add_controller(mg)
+        head.pack_start(self.b_as)
+
+        self.b_save = Gtk.Button(
+            label='Zastąp oryginalne', css_classes=['suggested-action'],
+            tooltip_text='Zastępuje oryginalne pliki przyciętymi wersjami — dotyczy wszystkich '
+                         'załadowanych obrazów (każdy wg swojego kadru).\n'
+                         'Kopie oryginałów są zachowywane, więc można to cofnąć przyciskiem „Cofnij”.\n'
+                         'Formaty bez obsługi zapisu w systemie trafiają jako PNG obok oryginału.')
+        self.b_save.connect('clicked', self.ask_overwrite)
+        self.b_undo = Gtk.Button(child=Adw.ButtonContent(icon_name='edit-undo-symbolic', label='Cofnij'))
+        self.b_undo.connect('clicked', self.undo)
+
+        # przyciski na samym końcu headera: panel (najbardziej na prawo) i tryb indywidualny
+        self.panel_icon = Icon(draw_panel_icon)
+        self.b_panel = Gtk.Button(css_classes=['flat'], child=self.panel_icon)
+        self.b_panel.connect('clicked', self.cycle_panel)
+        self.ind_icon = Icon(draw_crop_icon)
+        self.ind_n = Gtk.Label(visible=False)
+        ib = Gtk.Box(spacing=4)
+        ib.append(self.ind_icon)
+        ib.append(self.ind_n)
+        self.b_ind = Gtk.Button(css_classes=['flat'], child=ib)
+        self.b_ind.connect('clicked', self.toggle_indiv)
+        head.pack_end(self.b_panel)
+        head.pack_end(self.b_ind)
+        head.pack_end(self.b_save)
+        head.pack_end(self.b_undo)
+
+        # --- panel (pola kadru, zoom, lista obrazów) — przenoszony: dół / prawa strona / ukryty ---
+        self.grid = Gtk.Grid(column_spacing=6, row_spacing=8)
+        self.spins = {}
+        self.fw = []
+        for k, t in (('x', 'X'), ('y', 'Y'), ('w', 'Szer.'), ('h', 'Wys.')):
+            sp = Gtk.SpinButton.new_with_range(0, 0, 1)
+            sp.set_width_chars(5)
+            sp.connect('value-changed', self.on_spin)
+            sp.connect('activate', lambda s: self.area.grab_focus())
+            self.spins[k] = sp
+            lab = dim(t)
+            lab.set_xalign(0)
+            self.fw += [lab, sp]
+        self.info = dim('')
+        self.info.set_selectable(True)
+        self.info.set_hexpand(True)
+        self.fw.append(self.info)
+
+        zb = Gtk.Box(css_classes=['linked'])
+        self.z_out = Gtk.Button(icon_name='zoom-out-symbolic',
+                                tooltip_text='Oddal (scroll w dół nad obrazem, ↓, −)')
+        self.z_fit = Gtk.Button(label='—', width_request=64,
+                                tooltip_text='Dopasuj do okna\nScroll nad obrazem, ↑/↓, +/− — zoom\n'
+                                             'Prawy/środkowy przycisk myszy — przesuwanie\n'
+                                             '←/→ lub kółko myszy poza obrazem — poprzedni/następny obraz')
+        self.z_in = Gtk.Button(icon_name='zoom-in-symbolic',
+                               tooltip_text='Przybliż (scroll w górę nad obrazem, ↑, +)')
+        self.z_out.connect('clicked', lambda b: self.area.zoom_by(1 / ZOOM_STEP))
+        self.z_in.connect('clicked', lambda b: self.area.zoom_by(ZOOM_STEP))
+        self.z_fit.connect('clicked', lambda b: self.area.zoom_to(1.0))
+        for w in (self.z_out, self.z_fit, self.z_in):
+            zb.append(w)
+
+        # poprzedni / następny obraz — same ikony, po prawej od przycisków zoomu
+        nb = Gtk.Box(css_classes=['linked'])
+        self.b_prev = Gtk.Button(icon_name='go-previous-symbolic', tooltip_text='Poprzedni obraz (←)')
+        self.b_next = Gtk.Button(icon_name='go-next-symbolic', tooltip_text='Następny obraz (→)')
+        self.b_prev.connect('clicked', lambda b: self.step(-1))
+        self.b_next.connect('clicked', lambda b: self.step(1))
+        nb.append(self.b_prev)
+        nb.append(self.b_next)
+
+        self.zrow = Gtk.Box(spacing=8)
+        self.zrow.append(zb)
+        self.zrow.append(nb)
+        self.fw.append(self.zrow)
+
+        # siatka miniatur: na dole układ kolumnami (góra→dół, potem następna kolumna), w sidebarze wierszami
+        self.tgrid = Gtk.Grid(column_spacing=GAP, row_spacing=GAP, halign=Gtk.Align.START, valign=Gtk.Align.CENTER)
+        # suwak nakładkowy: nie zabiera miejsca (więc nic nie skacze), a zapas SB pod/obok siatki
+        # sprawia, że nie zasłania miniatur
+        self.scroll = Gtk.ScrolledWindow(child=self.tgrid, overlay_scrolling=True)
+        self.spinner = Gtk.Spinner(visible=False, valign=Gtk.Align.CENTER)
+        self.count = dim('')
+        self.count.set_halign(Gtk.Align.START)
+        self.count.set_xalign(0)
+        self.count.set_hexpand(True)
+        self.b_desel = Gtk.Button(label='Odznacz', css_classes=['flat'], visible=False,
+                                  tooltip_text='Czyści zaznaczenie miniatur (Esc)')
+        self.b_desel.connect('clicked', lambda b: self.set_selected(set()))
+        self.b_clear = Gtk.Button(label='Wyczyść', css_classes=['flat'],
+                                  tooltip_text='Usuwa wszystkie obrazy z listy (pliki na dysku zostają)')
+        self.b_clear.connect('clicked', self.clear_all)
+        top = Gtk.Box(spacing=6)
+        top.append(self.spinner)
+        top.append(self.count)
+        top.append(self.b_desel)
+        top.append(self.b_clear)
+        self.extra = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, visible=False)
+        self.extra.append(top)
+        self.extra.append(self.scroll)
+
+        self.panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.panel.append(self.grid)
+        self.panel.append(self.extra)
+
+        self.bgrip = Grip(False, self, lambda: self.rows, self.rows_move)
+        self.sgrip = Grip(True, self, lambda: self.side_w, self.side_move)
+        self.bottom_slot = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0, hexpand=True,
+                       margin_top=6, margin_bottom=12, margin_start=12, margin_end=12)
+        left.append(self.area)
+        left.append(self.bgrip)
+        left.append(self.bottom_slot)
+        # hexpand=False jest ważne: bez tego „rozciągliwość” etykiet w panelu poszerzała sidebar
+        self.side_slot = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=False)
+        root = Gtk.Box()
+        root.append(left)
+        root.append(self.sgrip)
+        root.append(self.side_slot)
+
+        tv = Adw.ToolbarView(content=root)
+        tv.set_top_bar_style(Adw.ToolbarStyle.FLAT)
+        tv.add_top_bar(head)
+        self.tv = tv
+
+        # kółko myszy przełącza obrazy w całym oknie poza obrazem (zoom), polami liczbowymi i suwakami
+        mc = Gtk.EventControllerMotion()
+        mc.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        mc.connect('motion', lambda c, x, y: setattr(self, 'mp', (x, y)))
+        mc.connect('enter', lambda c, x, y: setattr(self, 'mp', (x, y)))
+        tv.add_controller(mc)
+        ws = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.BOTH_AXES)
+        ws.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        ws.connect('scroll', lambda c, dx, dy: self.on_wheel(dx, dy))
+        tv.add_controller(ws)
+
+        self.toasts = Adw.ToastOverlay(child=tv)
+        self.set_content(self.toasts)
+        self.set_panel(st['panel'])
+        self.sync()
+        self.upd_zoom()
+        self.upd_undo()
+
+    # --- start: najpierw okno, potem przywracanie sesji ---
+    def on_map(self, *_):
+        st, self.st0 = self.st0, None
+        if st:
+            GLib.idle_add(self.begin, st)
+
+    def begin(self, st):
+        self.restore(st)
+        return GLib.SOURCE_REMOVE
+
+    def toast(self, text, button=None, action=None, timeout=None):
+        t = Adw.Toast.new(text)
+        t.set_use_markup(False)
+        if button and action:
+            t.set_button_label(button)
+            t.connect('button-clicked', lambda *_: action())
+        if timeout is not None:
+            t.set_timeout(timeout)
+        self.toasts.add_toast(t)
+        if self.sticky_toast:
+            # trwały toast nie może blokować kolejki — schodzi na chwilę i wraca za nowym toastem
+            self.bumped = True
+            self.sticky_toast.dismiss()
+
+    # --- trwałe toasty: „Wyczyszczono listę” (Przywróć) i „błędy” (Szczegóły) ---
+    def build_sticky(self, kind):
+        if kind == 'clear' and self.cleared:
+            t = Adw.Toast.new(f'Wyczyszczono listę obrazów ({len(self.cleared["paths"])})')
+            t.set_button_label('Przywróć')
+            t.connect('button-clicked', lambda *_: self.restore_cleared())
+        elif kind == 'errors' and self.errors:
+            t = Adw.Toast.new(self.errors['msg'])
+            t.set_button_label('Szczegóły')
+            t.connect('button-clicked', lambda *_: self.errors_clicked())
+        else:
+            return None
+        t.set_use_markup(False)
+        t.set_timeout(0)    # 0 = nie znika sam
+        t.connect('dismissed', self.on_sticky_dismissed)
+        return t
+
+    def show_sticky(self, kind):
+        """Pokazuje trwały toast; naraz jest tylko jeden (nowy zastępuje poprzedni)."""
+        old, self.sticky_toast = self.sticky_toast, None
+        self.sticky_kind, self.bumped = kind, False
+        if old:
+            old.dismiss()
+        t = self.build_sticky(kind)
+        if t:
+            self.sticky_toast = t
+            self.toasts.add_toast(t)
+
+    def drop_sticky(self):
+        self.sticky_kind = None
+        self.bumped = False
+        t, self.sticky_toast = self.sticky_toast, None
+        if t:
+            t.dismiss()
+
+    def on_sticky_dismissed(self, t):
+        if self.sticky_toast is not t:
+            return
+        self.sticky_toast = None
+        if self.sticky_kind and self.bumped:
+            self.show_sticky(self.sticky_kind)
+
+    def errors_clicked(self):
+        self.bumped = True      # przycisk zdejmuje toast, a ten ma zostać do otwarcia nowych obrazów
+        self.show_errors()
+
+    def forget_cleared(self):
+        """Zapomina zrzut listy i raport błędów (np. po otwarciu nowych obrazów) i zdejmuje trwały toast."""
+        self.cleared = None
+        self.errors = None
+        self.drop_sticky()
+        self.persist_soon()
+
+    def restore_cleared(self):
+        s, self.cleared = self.cleared, None
+        self.bumped = False
+        self.sticky_kind = None
+        if not s or self.thumbs or self.queue:
+            return
+        self.groups = dict(s['groups'])
+        self.refs = dict(s['refs'])
+        self.add_files(s['paths'], s['current'], s['img_groups'])
+        self.dirty = s['dirty'] and self.has_crops()
+        self.sync()
+
+    def show_errors(self):
+        """Dialog „Szczegóły”: które pliki zawiodły i dlaczego."""
+        e = self.errors
+        if not e:
+            return
+        d = Adw.Dialog(follows_content_size=True)
+        head_l = Gtk.Label(label=f'{e["title"]} ({len(e["errs"])})', css_classes=['title-2'], wrap=True)
+        body_l = Gtk.Label(label=e['intro'], wrap=True, justify=Gtk.Justification.CENTER, max_width_chars=50)
+        lst = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=['boxed-list'], width_request=460)
+        for it in e['errs']:
+            p = it.get('path') or ''
+            row = Adw.ActionRow()
+            row.set_title(GLib.markup_escape_text(os.path.basename(p) or 'Błąd ogólny'))
+            sub = it['why'] + (f'\n{short(os.path.dirname(p))}' if p else '')
+            row.set_subtitle(GLib.markup_escape_text(sub))
+            row.set_subtitle_selectable(True)
+            lst.append(row)
+        sc = Gtk.ScrolledWindow(child=lst, propagate_natural_height=True, max_content_height=340,
+                                hscrollbar_policy=Gtk.PolicyType.NEVER, overlay_scrolling=True)
+        b_close = Gtk.Button(label='Zamknij', css_classes=['suggested-action'])
+        b_close.connect('clicked', lambda b: d.close())
+        btns = Gtk.Box(spacing=12, homogeneous=True)
+        if e.get('outs'):
+            b_show = Gtk.Button(label=self.reveal_label(e['outs'], True))
+            b_show.connect('clicked', lambda b: self.reveal_files(e['outs']))
+            btns.append(b_show)
+        btns.append(b_close)
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14,
+                      margin_top=24, margin_bottom=20, margin_start=24, margin_end=24)
+        for w in (head_l, body_l, sc, btns):
+            col.append(w)
+        d.set_child(col)
+        d.set_default_widget(b_close)
+        d.present(self)
+
+    # --- rozmiar okna (zapamiętywany między sesjami) ---
+    def on_geom(self, *_):
+        self.persist_soon()
+
+    def on_active(self, *_):
+        if not self.is_active():
+            self.nav_held = 0   # zgubione zdarzenie puszczenia klawisza
+            self.nav_queue = 0
+
+    # --- panel: dół / prawa strona / ukryty ---
+    def cycle_panel(self, _):
+        self.set_panel(PANEL_MODES[(PANEL_MODES.index(self.mode) + 1) % len(PANEL_MODES)])
+
+    def set_panel(self, mode):
+        self.mode = mode
+        par = self.panel.get_parent()
+        if par:
+            par.remove(self.panel)
+        if mode == 'bottom':
+            self.bottom_slot.append(self.panel)
+        elif mode == 'side':
+            self.side_slot.append(self.panel)
+        self.bottom_slot.set_visible(mode == 'bottom')
+        self.side_slot.set_visible(mode == 'side')
+        self.sgrip.set_visible(mode == 'side')
+        self.bgrip.set_visible(mode == 'bottom' and bool(self.thumbs))
+        side = mode == 'side'
+        self.panel.set_margin_top(6 if side else 0)
+        self.panel.set_margin_bottom(12 if side else 0)
+        self.panel.set_margin_start(6 if side else 0)
+        self.panel.set_margin_end(12 if side else 0)
+        self.layout_panel()
+        self.apply_sizes()
+        self.reflow(True)
+        self.upd_count()
+        self.panel_icon.set_state(mode)
+        self.b_panel.set_tooltip_text(PANEL_TIP[mode])
+        self.persist_soon()
+
+    def layout_panel(self):
+        side = self.mode == 'side'
+        for w in self.fw:
+            if w.get_parent() is self.grid:
+                self.grid.remove(w)
+        for w, (c, r, sp) in zip(self.fw, GRID_SIDE if side else GRID_BOTTOM):
+            self.grid.attach(w, c, r, sp, 1)
+        for sp in self.spins.values():
+            sp.set_hexpand(side)
+            sp.set_margin_end(0 if side else 4)
+        self.info.set_halign(Gtk.Align.FILL)
+        self.info.set_xalign(0 if side else 1)
+        # na dole etykiety skracają się wielokropkiem — ich długość nie może wymuszać szerokości okna
+        self.info.set_wrap(side)
+        self.info.set_ellipsize(Pango.EllipsizeMode.NONE if side else Pango.EllipsizeMode.END)
+        self.info.set_max_width_chars(20 if side else -1)
+        self.count.set_wrap(side)
+        self.count.set_ellipsize(Pango.EllipsizeMode.NONE if side else Pango.EllipsizeMode.END)
+        self.count.set_max_width_chars(16 if side else -1)
+        self.zrow.set_halign(Gtk.Align.START if side else Gtk.Align.END)
+        self.zrow.set_hexpand(False)
+        self.tgrid.set_halign(Gtk.Align.CENTER if side else Gtk.Align.START)
+        self.tgrid.set_valign(Gtk.Align.START if side else Gtk.Align.CENTER)
+        # stały zapas na nakładkowy suwak: pod miniaturami (dół) albo z prawej strony (sidebar)
+        self.tgrid.set_margin_bottom(0 if side else SB)
+        self.tgrid.set_margin_end(SB if side else 0)
+        if side:
+            self.scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        else:
+            self.scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.NEVER)
+        self.scroll.set_propagate_natural_height(False)
+        self.scroll.set_vexpand(side)
+        self.extra.set_vexpand(side)
+        self.panel.set_vexpand(side)
+
+    def apply_sizes(self):
+        self.side_slot.set_size_request(self.side_w, -1)
+        if self.mode == 'side':
+            self.scroll.set_min_content_height(CELL)
+        else:
+            self.scroll.set_min_content_height(self.rows * (CELL + GAP) - GAP + SB)
+
+    def max_rows(self):
+        return max(1, (self.get_height() - ROWS_OVERHEAD + GAP) // (CELL + GAP))
+
+    def set_rows(self, r):
+        self.rows = r
+        self.apply_sizes()
+        self.reflow()
+        self.persist_soon()
+
+    def set_side_w(self, w):
+        self.side_w = w
+        self.apply_sizes()
+        self.reflow()
+        self.persist_soon()
+
+    def rows_move(self, r0, dx, dy):
+        r = max(1, min(self.max_rows(), round(r0 - dy / (CELL + GAP))))
+        if r != self.rows:
+            self.set_rows(r)
+
+    def side_max(self):
+        """Największa szerokość panelu, przy której pole kadrowania nie spada poniżej minimum.
+        Powyżej tego progu panel się już nie poszerza (zamiast rozpychać okno)."""
+        return max(SIDE_MIN, self.get_width() - CANVAS_MIN - LEFT_PAD - GRIP_W)
+
+    def side_move(self, w0, dx, dy):
+        w = min(max(round(w0 - dx), SIDE_MIN), self.side_max())
+        if w != self.side_w:
+            self.set_side_w(w)
+
+    def style_cell(self, t, side):
+        """Panel po prawej: równe kwadraty. Panel na dole: komórka dopasowana do miniatury (małe odstępy)."""
+        t.tight = not side
+        t.cell.set_halign(Gtk.Align.CENTER)
+        t.cell.set_valign(Gtk.Align.CENTER)
+        t.cell.set_size_request(CELL if side else -1, CELL if side else -1)
+        t.place_x()
+
+    def per_line(self):
+        if self.mode == 'side':
+            return max(1, (self.side_w - SIDE_PAD - SB + GAP) // (CELL + GAP))
+        return max(1, self.rows)
+
+    def reflow(self, force=False):
+        """Układa komórki miniatur w siatce: w sidebarze wierszami, na dole kolumnami."""
+        side = self.mode == 'side'
+        per = self.per_line()
+        key = (side, per, len(self.thumbs))
+        if key == self.lkey and not force:
+            return
+        self.lkey = key
+        for t in self.thumbs:
+            if t.cell.get_parent() is self.tgrid:
+                self.tgrid.remove(t.cell)
+            self.style_cell(t, side)
+        for i, t in enumerate(self.thumbs):
+            c, r = (i % per, i // per) if side else (i // per, i % per)
+            self.tgrid.attach(t.cell, c, r, 1, 1)
+
+    def place_last(self):
+        """Dokłada do siatki tylko ostatnio dodaną miniaturę (bez przekładania wszystkich)."""
+        side = self.mode == 'side'
+        per = self.per_line()
+        n = len(self.thumbs)
+        if self.lkey != (side, per, n - 1):
+            self.reflow(True)
+            return
+        t = self.thumbs[-1]
+        self.style_cell(t, side)
+        i = n - 1
+        c, r = (i % per, i // per) if side else (i // per, i % per)
+        self.tgrid.attach(t.cell, c, r, 1, 1)
+        self.lkey = (side, per, n)
+
+    # --- zapamiętywanie sesji ---
+    def persist(self):
+        if not self.ready:
+            return
+        if self.ptimer:
+            GLib.source_remove(self.ptimer)
+            self.ptimer = 0
+        w, h = self.get_default_size()
+        img_groups = {t.path: t.group for t in self.thumbs if t.group}
+        img_groups.update(self.load_groups)
+        cl = self.cleared
+        cleared = None
+        if cl:
+            cleared = {'paths': cl['paths'], 'current': cl['current'],
+                       'groups': {str(g): c for g, c in cl['groups'].items()},
+                       'refs': {str(k): list(v) for k, v in cl['refs'].items()},
+                       'img_groups': cl['img_groups'], 'dirty': cl['dirty']}
+        view = self.view0
+        if view is None and self.cur:
+            vs = self.area.view_state()
+            if vs and vs[0] > 1.0:
+                view = {'path': self.cur.path, 'zoom': vs[0], 'cx': vs[1], 'cy': vs[2]}
+        save_state({'crop': self.general, 'dirty': self.dirty, 'view': view,
+                    'groups': {str(g): c for g, c in self.groups.items()},
+                    'refs': {str(k): list(v) for k, v in self.refs.items()},
+                    'img_groups': img_groups,
+                    'images': [t.path for t in self.thumbs] + list(self.queue),
+                    'current': self.cur.path if self.cur else self.load_first,
+                    'scheme': self.scheme, 'panel': self.mode,
+                    'rows': self.rows, 'side_w': self.side_w,
+                    'win_w': w if w >= 400 else WIN_W, 'win_h': h if h >= 300 else WIN_H,
+                    'maximized': self.is_maximized(),
+                    'cleared': cleared})
+
+    def persist_soon(self):
+        if not self.ready:
+            return
+        if self.ptimer:
+            GLib.source_remove(self.ptimer)
+
+        def tick():
+            self.ptimer = 0
+            self.persist()
+            return GLib.SOURCE_REMOVE
+        self.ptimer = GLib.timeout_add(400, tick)
+
+    def restore(self, st):
+        """Przywraca sesję już po pokazaniu okna: obrazy ładują się po jednym, w tle."""
+        self.restoring = False
+        paths = [p for p in st['images'] if os.path.isfile(p)]
+        missing = len(st['images']) - len(paths)
+        if self.view0 and self.view0['path'] not in paths:
+            self.view0 = None
+        if paths:
+            self.add_files(paths, st['current'], st['img_groups'], front=True)
+        self.dirty = st['dirty'] and self.has_crops()
+        self.ready = True
+        if missing:
+            self.toast(f'Nie znaleziono plików z poprzedniej sesji: {missing}')
+        # lista wyczyszczona w poprzedniej sesji: przycisk „Przywróć” wraca, o ile nic nowego nie otwarto
+        if not st['images'] and st['cleared'] and not self.thumbs and not self.queue:
+            self.cleared = st['cleared']
+            self.show_sticky('clear')
+        if not self.loading:
+            self.gc()
+        self.sync()
+
+    # --- kadry: ogólny i indywidualne (#N), skalowanie pod obrazy o tych samych proporcjach ---
+    def raw_of(self, t):
+        """Kadr tak, jak został zapisany (w pikselach obrazu wzorcowego)."""
+        return self.groups.get(t.group) if t.group else self.general
+
+    def ratio(self, t):
+        """(kx, ky): o ile kadr obrazu t jest przeskalowany względem obrazu wzorcowego.
+        None, gdy skalowanie nie dotyczy (brak wzorca, ten sam rozmiar albo inne proporcje)."""
+        ref = self.refs.get(t.group or 0)
+        if not ref:
+            return None
+        (rw, rh), (iw, ih) = ref, t.dims
+        if (rw, rh) == (iw, ih):
+            return None
+        if abs(rw * ih - rh * iw) > SCALE_TOL * max(rw * ih, rh * iw):
+            return None
+        return iw / rw, ih / rh
+
+    def crop_of(self, t):
+        """Kadr dla obrazu t — przeliczony na jego rozmiar, jeśli ma te same proporcje co wzorzec."""
+        c = self.raw_of(t)
+        r = self.ratio(t) if c else None
+        if not r:
+            return c
+        kx, ky = r
+        x0, y0 = round(c[0] * kx), round(c[1] * ky)
+        x1, y1 = round((c[0] + c[2]) * kx), round((c[1] + c[3]) * ky)
+        return [x0, y0, max(1, x1 - x0), max(1, y1 - y0)]
+
+    def tag_of(self, t):
+        """Plakietka na kadrze: #N (kadr indywidualny) i/lub % (kadr przeskalowany pod ten obraz)."""
+        scaled = bool(self.raw_of(t)) and self.ratio(t) is not None
+        parts = ([f'#{t.group}'] if t.group else []) + ([SCALE_TAG] if scaled else [])
+        return ' '.join(parts) or None
+
+    def store(self, sel):
+        """Zapisuje kadr zaznaczony na bieżącym obrazie — ten obraz zostaje jego wzorcem."""
+        t = self.cur
+        key = t.group if t and t.group else 0
+        if t and t.group:
+            self.groups[t.group] = sel
+        else:
+            self.general = sel
+        if sel and t:
+            self.refs[key] = tuple(t.dims)
+        else:
+            self.refs.pop(key, None)
+
+    def info_for(self, t):
+        return self.crop_of(t), t.group, self.tag_of(t)
+
+    def has_crops(self):
+        return bool(self.general or any(self.groups.values()))
+
+    def gc(self):
+        used = {t.group for t in self.thumbs if t.group} | set(self.load_groups.values())
+        self.groups = {g: c for g, c in self.groups.items() if g in used}
+        self.refs = {k: v for k, v in self.refs.items() if k == 0 or k in self.groups}
+
+    def free_gid(self):
+        g = 2
+        while g in self.groups:
+            g += 1
+        return g
+
+    def targets(self):
+        """Obrazy, których dotyczy przycisk trybu indywidualnego: całe zaznaczenie (≥2) tylko wtedy,
+        gdy bieżący obraz do niego należy; w innym wypadku wyłącznie bieżący obraz (zaznaczenie zostaje)."""
+        if len(self.selected) >= 2 and self.cur in self.selected:
+            return [t for t in self.thumbs if t in self.selected]
+        return [self.cur] if self.cur else []
+
+    def toggle_indiv(self, _):
+        ts = self.targets()
+        if not ts:
+            return
+        if all(t.group for t in ts):
+            for t in ts:
+                t.group = None
+            self.gc()
+        else:
+            base = self.cur if self.cur in ts else ts[0]
+            crop = self.crop_of(base)
+            for t in ts:
+                t.group = None
+            self.gc()
+            gid = self.free_gid()
+            self.groups[gid] = list(crop) if crop else None
+            if crop:
+                self.refs[gid] = tuple(base.dims)
+            else:
+                self.refs.pop(gid, None)
+            for t in ts:
+                t.group = gid
+        self.dirty = True
+        self.sync()
+
+    def on_crop(self, *_):
+        self.store(self.area.sel)
+        self.dirty = True
+        self.sync()
+
+    # --- zamykanie okna ---
+    def is_dirty(self):
+        return bool(self.dirty and self.has_crops() and self.thumbs)
+
+    def on_close(self, *_):
+        if self.saving:
+            self.toast('Trwa zapisywanie — zamknij okno, gdy się skończy')
+            return True
+        if self.force_close or not self.is_dirty():
+            self.persist()
+            return False
+        if self.close_dlg:
+            return True
+        d = Adw.AlertDialog(heading='Zamknąć bez zapisania kadru?',
+                            body='Kadr nie został zapisany w żadnym obrazie. Przy następnym uruchomieniu '
+                                 'wróci razem z listą obrazów, a pliki na dysku zostaną bez zmian.')
+        d.add_response('cancel', 'Wróć')
+        d.add_response('close', 'Zamknij')
+        d.set_response_appearance('close', Adw.ResponseAppearance.DESTRUCTIVE)
+        d.set_default_response('cancel')
+        d.set_close_response('cancel')
+        d.connect('response', self.on_close_resp)
+        self.close_dlg = d
+        d.present(self)
+        return True
+
+    def on_close_resp(self, d, r):
+        self.close_dlg = None
+        if r == 'close':
+            self.force_close = True
+            self.close()
+
+    # --- klawiatura i kółko ---
+    def on_key(self, ctrl, keyval, keycode, state):
+        if self.get_visible_dialog() or isinstance(self.get_focus(), Gtk.Editable):
+            return False
+        if self.saving:
+            return True         # w trakcie zapisu skróty klawiszowe są wyłączone
+        ctrl_m, alt_m = Gdk.ModifierType.CONTROL_MASK, Gdk.ModifierType.ALT_MASK
+        if state & ctrl_m and not state & alt_m:
+            if keyval in (Gdk.KEY_v, Gdk.KEY_V):
+                self.paste()
+                return True
+            if keyval in (Gdk.KEY_a, Gdk.KEY_A):
+                self.set_selected(set(self.thumbs))
+                return True
+        if state & (ctrl_m | alt_m):
+            return False
+        if keyval == Gdk.KEY_Escape:
+            if not self.selected:
+                return False
+            self.set_selected(set())
+        elif keyval in (Gdk.KEY_Left, Gdk.KEY_KP_Left):
+            self.nav_press(-1)
+        elif keyval in (Gdk.KEY_Right, Gdk.KEY_KP_Right):
+            self.nav_press(1)
+        elif keyval in (Gdk.KEY_Up, Gdk.KEY_KP_Up, Gdk.KEY_plus, Gdk.KEY_KP_Add, Gdk.KEY_equal):
+            self.area.zoom_by(ZOOM_STEP, True)
+        elif keyval in (Gdk.KEY_Down, Gdk.KEY_KP_Down, Gdk.KEY_minus, Gdk.KEY_KP_Subtract):
+            self.area.zoom_by(1 / ZOOM_STEP, True)
+        else:
+            return False
+        return True
+
+    def on_key_up(self, ctrl, keyval, keycode, state):
+        d = (-1 if keyval in (Gdk.KEY_Left, Gdk.KEY_KP_Left) else
+             1 if keyval in (Gdk.KEY_Right, Gdk.KEY_KP_Right) else 0)
+        if d and self.nav_held == d:
+            self.nav_held = 0
+
+    # Przewijanie obrazów: strzałka (także przytrzymana) i kółko myszy idą przez jeden mechanizm
+    # zsynchronizowany z klatkami — każdy obraz zdąży się narysować, zanim wejdzie następny.
+    def nav_press(self, d):
+        if self.nav_held == d:
+            return              # systemowe powtarzanie klawisza — rytm nadaje nav_tick
+        self.nav_held = d
+        self.nav_queue = 0
+        self.step(d)
+        self.nav_next = GLib.get_monotonic_time() // 1000 + NAV_FIRST
+        self.nav_run()
+
+    def nav_push(self, k):
+        if self.nav_queue * k < 0:
+            self.nav_queue = 0
+        self.nav_queue = max(-NAV_QUEUE, min(NAV_QUEUE, self.nav_queue + k))
+        self.nav_run()
+
+    def nav_run(self):
+        if not self.nav_id:
+            self.nav_id = self.add_tick_callback(self.nav_tick)
+
+    def nav_tick(self, widget, clock):
+        if self.get_visible_dialog():
+            self.nav_held, self.nav_queue = 0, 0
+        now = GLib.get_monotonic_time() // 1000
+        if now >= self.nav_next:
+            d = 0
+            if self.nav_queue:
+                d = 1 if self.nav_queue > 0 else -1
+                self.nav_queue -= d
+            elif self.nav_held:
+                d = self.nav_held
+            if d:
+                self.nav_next = now + NAV_STEP
+                self.step(d)
+        if self.nav_held or self.nav_queue or now < self.nav_next:
+            return GLib.SOURCE_CONTINUE
+        self.nav_id = 0
+        return GLib.SOURCE_REMOVE
+
+    def on_wheel(self, dx, dy):
+        """Kółko nad panelem, paskiem przycisków, nagłówkiem i panelem bocznym przełącza obrazy.
+        Nad obrazem (zoom), polami liczbowymi i suwakami zostaje zachowanie domyślne."""
+        if not self.thumbs or self.get_visible_dialog():
+            return False
+        n = self.tv.pick(self.mp[0], self.mp[1], Gtk.PickFlags.DEFAULT)
+        while n is not None and n is not self.tv:
+            if n is self.area or isinstance(n, (Gtk.Scrollbar, Gtk.SpinButton)):
+                return False
+            n = n.get_parent()
+        d = dy or dx
+        if self.sacc * d < 0:
+            self.sacc = 0.0
+        self.sacc += d
+        k = int(self.sacc)
+        if k:
+            self.sacc -= k
+            self.nav_push(k)
+        return True
+
+    def step(self, d):
+        if not self.cur or not self.thumbs:
+            return
+        i = min(max(self.thumbs.index(self.cur) + d, 0), len(self.thumbs) - 1)
+        if self.thumbs[i] is not self.cur:
+            self.show(self.thumbs[i])
+
+    def reveal(self, t):
+        """Przewija listę miniatur (tylko w jej osi) tak, żeby aktywna była widoczna."""
+        try:
+            if t.cell and t.cell.get_parent() is self.tgrid:
+                ok, r = t.cell.compute_bounds(self.tgrid)
+                if ok:
+                    if self.mode == 'side':
+                        adj, pos, size = self.scroll.get_vadjustment(), r.get_y(), r.get_height()
+                    else:
+                        adj, pos, size = self.scroll.get_hadjustment(), r.get_x(), r.get_width()
+                    if pos < adj.get_value():
+                        adj.set_value(pos - 8)
+                    elif pos + size > adj.get_value() + adj.get_page_size():
+                        adj.set_value(pos + size - adj.get_page_size() + 8)
+        except Exception:
+            pass
+        return False
+
+    def upd_zoom(self, *_):
+        a = self.area
+        has = a.pix is not None
+        self.z_fit.set_label(f'{round(a.scale() * 100)}%' if has else '—')
+        for b in (self.z_in, self.z_out, self.z_fit):
+            b.set_sensitive(has)
+        self.persist_soon()
+
+    def upd_undo(self):
+        m = self.undo_m
+        self.b_undo.set_sensitive(bool(m))
+        if m:
+            self.b_undo.set_tooltip_text(
+                f'Cofa ostatnie „Zastąp oryginalne”: przywraca oryginalne pliki ({len(m["items"])}) '
+                'i kadry z tamtego momentu.\nDziała też po ponownym uruchomieniu programu.')
+        else:
+            self.b_undo.set_tooltip_text('Nic do cofnięcia — cofanie działa po użyciu „Zastąp oryginalne”.')
+
+    def upd_indiv(self):
+        ts = self.targets()
+        multi = len(ts) >= 2        # tryb „zaznaczone”: bieżący obraz należy do zaznaczenia (≥2)
+        active = bool(ts) and all(t.group for t in ts)
+        self.b_ind.set_sensitive(bool(ts))
+        self.ind_icon.set_state(active)
+        self.ind_n.set_visible(multi)
+        self.ind_n.set_text(str(len(ts)))
+        if active:
+            self.ind_n.add_css_class('green')
+        else:
+            self.ind_n.remove_css_class('green')
+        if not ts:
+            tip = 'Tryb indywidualny — najpierw dodaj obrazy.'
+        elif multi and active:
+            tip = f'Wyłącz tryb indywidualny dla zaznaczonych obrazów ({len(ts)}) — wrócą do kadru ogólnego.'
+        elif multi:
+            tip = f'Nadaj zaznaczonym obrazom ({len(ts)}) wspólny, osobny kadr (nowy #N).'
+        elif active:
+            tip = f'Wyłącz tryb indywidualny (#{ts[0].group}) — obraz wróci do kadru ogólnego.'
+        elif len(self.selected) >= 2:
+            tip = ('Tryb indywidualny: osobny kadr tylko dla tego obrazu.\n'
+                   'Ten obraz nie należy do zaznaczenia, więc dotyczy tylko jego — zaznaczenie zostaje bez zmian.')
+        else:
+            tip = ('Tryb indywidualny: osobny kadr tylko dla tego obrazu.\n'
+                   'Zaznacz kilka miniatur (Ctrl/Shift+klik), żeby nadać im wspólny osobny kadr.')
+        self.b_ind.set_tooltip_text(tip)
+
+    def upd_count(self):
+        """Pasek nad miniaturami: liczba obrazów, zaznaczenie, postęp ładowania i podpowiedź nawigacji."""
+        n, k = len(self.thumbs), len(self.selected)
+        if self.loading:
+            txt = f'Ładowanie obrazów: {self.load_done}/{self.load_total}…'
+            if k:
+                txt += f' · zaznaczone: {k}'
+        else:
+            txt = f'Obrazy: {n}' + (f' · zaznaczone: {k}' if k else '')
+            if n > 1:
+                if self.mode == 'side':
+                    txt += '\n' + NAV_HINT[0].upper() + NAV_HINT[1:]
+                else:
+                    txt += ' · ' + NAV_HINT
+        self.count.set_text(txt)
+
+    def upd_title(self):
+        cur, n = self.cur, len(self.thumbs)
+        parts = []
+        if cur:
+            parts.append(f'{cur.name} ({self.thumbs.index(cur) + 1}/{n})')
+        if self.loading:
+            parts.append(f'ładowanie {self.load_done}/{self.load_total}')
+        p = self.save_prog
+        if p:
+            if p['phase'] == 'thumbs':
+                parts.append(f'odświeżanie miniatur {p["k"]}/{p["total"]}')
+            else:
+                parts.append(f'zapisywanie {p["k"]}/{p["total"]}')
+        self.wtitle.set_subtitle(' · '.join(parts))
+
+    def upd_loading(self):
+        """Lekka aktualizacja wskaźników ładowania (wywoływana po każdym załadowanym obrazie)."""
+        a = self.area
+        if self.loading:
+            status = f'Ładowanie obrazów… {self.load_done}/{self.load_total}'
+        elif self.restoring:
+            status = 'Przywracanie sesji…'
+        else:
+            status = None
+        if a.pix is not None:
+            status = None
+        if a.status != status:
+            a.status = status
+            a.queue_draw()
+        self.spinner.set_visible(self.loading)
+        self.spinner.set_spinning(self.loading)
+        self.extra.set_visible(bool(self.thumbs) or self.loading)
+        self.upd_count()
+        self.upd_title()
+
+    # --- dodawanie obrazów: przycisk, drop, schowek ---
+    def open_files(self, *_):
+        f = Gtk.FileFilter()
+        f.set_name('Obrazy')
+        for fm in FORMATS:
+            for m in fm.get_mime_types():
+                f.add_mime_type(m)
+        st = Gio.ListStore.new(Gtk.FileFilter)
+        st.append(f)
+        d = Gtk.FileDialog(title='Wybierz obrazy', filters=st, default_filter=f)
+        d.open_multiple(self, None, self.on_files)
+
+    def on_files(self, d, res):
+        try:
+            files = d.open_multiple_finish(res)
+        except GLib.Error:
+            return
+        self.add_files([files.get_item(i).get_path() for i in range(files.get_n_items())])
+
+    def on_drop(self, target, value, x, y):
+        try:
+            paths = [f.get_path() for f in value.get_files() if f.get_path()]
+        except Exception:
+            return False
+        if not paths:
+            return False
+        self.add_files(paths)
+        return True
+
+    def paste(self):
+        cb = self.get_clipboard()
+        fm = cb.get_formats()
+        if fm.contain_gtype(Gdk.FileList.__gtype__):
+            cb.read_value_async(Gdk.FileList.__gtype__, GLib.PRIORITY_DEFAULT, None, self.on_paste_files)
+        elif fm.contain_gtype(Gdk.Texture.__gtype__):
+            cb.read_texture_async(None, self.on_paste_tex)
+        else:
+            self.toast('W schowku nie ma obrazów ani plików')
+
+    def on_paste_files(self, cb, res):
+        try:
+            v = cb.read_value_finish(res)
+            paths = [f.get_path() for f in v.get_files() if f.get_path()]
+        except Exception:
+            return self.toast('Nie można wkleić ze schowka')
+        if paths:
+            self.add_files(paths)
+        else:
+            self.toast('W schowku nie ma plików lokalnych')
+
+    def on_paste_tex(self, cb, res):
+        try:
+            tex = cb.read_texture_finish(res)
+            os.makedirs(PASTE_DIR, exist_ok=True)
+            path = unique(os.path.join(PASTE_DIR, 'wklejony_' + datetime.now().strftime('%Y%m%d-%H%M%S') + '.png'))
+            if not tex.save_to_png(path):
+                raise GLib.Error('zapis nieudany')
+        except (GLib.Error, OSError, AttributeError):
+            return self.toast('Nie można wkleić obrazu ze schowka')
+        self.add_files([path])
+
+    # --- ładowanie obrazów po jednym, w tle ---
+    def add_files(self, paths, first=None, groups=None, front=False):
+        """Kolejkuje obrazy do załadowania (duplikaty po ścieżce są pomijane). Ładują się po jednym."""
+        if self.saving:
+            return self.toast('Trwa zapisywanie — dodaj obrazy, gdy się skończy')
+        have = {t.path for t in self.thumbs} | set(self.queue)
+        new = []
+        for p in dict.fromkeys(paths):
+            if p in have:
+                self.load_dup += 1
+            else:
+                new.append(p)
+        if not new:
+            if not self.loading:
+                self.report_load()
+            return
+        self.forget_cleared()   # nowe obrazy — propozycja przywrócenia starej listy i raport błędów wygasają
+        if groups:
+            self.load_groups.update({p: g for p, g in groups.items() if p in new})
+        if first:
+            self.load_first = first
+        if front:
+            self.queue[:0] = new
+        else:
+            self.queue.extend(new)
+        self.load_total += len(new)
+        if self.has_crops():
+            self.dirty = True  # nowe obrazy nie mają jeszcze zastosowanego kadru
+        self.start_load()
+
+    def start_load(self):
+        if self.load_id:
+            self.upd_loading()
+            return
+        self.loading = True
+        self.load_id = GLib.idle_add(self.load_tick)
+        self.sync()
+
+    def load_tick(self):
+        if not self.queue:
+            self.finish_load()
+            return GLib.SOURCE_REMOVE
+        p = self.queue.pop(0)
+        self.load_done += 1
+        try:
+            t = Thumb(p, self.info_for)
+        except (GLib.Error, TypeError):
+            self.load_bad.append(os.path.basename(p))
+            self.load_groups.pop(p, None)
+        else:
+            g = self.load_groups.pop(p, None)
+            t.group = g if g in self.groups else None
+            self.add_thumb(t)
+            self.place_last()
+            if self.cur is None and (self.load_first is None or p == self.load_first):
+                self.show(t)
+        if not self.queue:
+            self.finish_load()
+            return GLib.SOURCE_REMOVE
+        self.upd_loading()
+        return GLib.SOURCE_CONTINUE
+
+    def finish_load(self):
+        self.load_id = 0
+        self.loading = False
+        self.load_total = self.load_done = 0
+        self.load_first = None
+        self.load_groups = {}
+        self.gc()
+        if self.cur is None and self.thumbs:
+            self.show(self.thumbs[0])
+        else:
+            self.sync()
+        self.report_load()
+
+    def report_load(self):
+        msgs = []
+        if self.load_bad:
+            msgs.append('Nie można otworzyć: ' + ', '.join(self.load_bad[:3]) + ('…' if len(self.load_bad) > 3 else ''))
+        if self.load_dup:
+            msgs.append(f'Pominięto duplikaty: {self.load_dup}')
+        self.load_bad, self.load_dup = [], 0
+        if msgs:
+            self.toast(' · '.join(msgs))
+
+    def cancel_load(self):
+        if self.load_id:
+            GLib.source_remove(self.load_id)
+            self.load_id = 0
+        self.queue = []
+        self.loading = False
+        self.load_total = self.load_done = 0
+        self.load_first = None
+        self.load_groups = {}
+        self.load_bad, self.load_dup = [], 0
+
+    def clear_all(self, _):
+        if not self.thumbs and not self.queue:
+            return
+        self.forget_cleared()
+        img_groups = {t.path: t.group for t in self.thumbs if t.group}
+        img_groups.update(self.load_groups)
+        self.cleared = {'paths': [t.path for t in self.thumbs] + list(self.queue),
+                        'current': self.cur.path if self.cur else self.load_first,
+                        'groups': dict(self.groups), 'refs': dict(self.refs),
+                        'img_groups': img_groups,
+                        'dirty': self.dirty}
+        self.cancel_load()
+        self.view0 = None
+        for t in self.thumbs:
+            if t.cell.get_parent() is self.tgrid:
+                self.tgrid.remove(t.cell)
+        self.thumbs, self.cur, self.anchor = [], None, None
+        self.selected = set()
+        self.gc()
+        self.reflow(True)
+        self.area.clear()
+        self.sync()
+        self.show_sticky('clear')
+
+    def add_thumb(self, t):
+        g = Gtk.GestureClick()
+        g.set_button(1)
+        g.connect('pressed', lambda gs, n, x, y: self.on_thumb_click(t, gs.get_current_event_state()))
+        t.add_controller(g)
+        mg = Gtk.GestureClick()
+        mg.set_button(2)
+        mg.connect('released', lambda gs, n, x, y: self.reveal_files([t.path]))
+        t.add_controller(mg)
+        ov = Gtk.Overlay(child=t)
+        x = Gtk.Button(icon_name='window-close-symbolic', halign=Gtk.Align.END, valign=Gtk.Align.START,
+                       tooltip_text='Usuń z listy', css_classes=['circular', 'osd'], visible=False)
+        x.connect('clicked', lambda b: self.drop(t))
+        ov.add_overlay(x)
+        t.cell, t.xbtn = ov, x
+        self.style_cell(t, self.mode == 'side')
+        # krzyżyk widoczny tylko po najechaniu na miniaturę
+        mc = Gtk.EventControllerMotion()
+        mc.connect('notify::contains-pointer',
+                   lambda c, p: x.set_visible(c.get_property('contains-pointer')))
+        ov.add_controller(mc)
+        self.thumbs.append(t)
+
+    # --- zaznaczanie miniatur ---
+    def set_selected(self, s):
+        self.selected = set(s)
+        self.sync()
+
+    def pick(self, t):
+        if t is self.cur:
+            self.sync()
+        else:
+            self.show(t)
+
+    def on_thumb_click(self, t, state):
+        """Zwykłe kliknięcie przełącza obraz; Ctrl/Shift zarządzają zaznaczeniem (które zostaje przy przełączaniu)."""
+        ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+        shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
+        if shift:
+            base = self.anchor if self.anchor in self.thumbs else (self.cur or t)
+            a, b = sorted((self.thumbs.index(base), self.thumbs.index(t)))
+            rng = set(self.thumbs[a:b + 1])
+            self.selected = (self.selected | rng) if ctrl else rng
+            self.pick(t)
+            self.anchor = base
+        elif ctrl:
+            if not self.selected and self.cur:
+                self.selected = {self.cur}
+            if t in self.selected:
+                self.selected.discard(t)
+                self.sync()
+            else:
+                self.selected.add(t)
+                self.pick(t)
+            self.anchor = t
+        else:
+            self.anchor = t
+            self.pick(t)
+
+    def show(self, t):
+        """Pokazuje obraz w widoku kadrowania (kadr zależy od trybu indywidualnego obrazu)."""
+        try:
+            pix = load(t.path)
+        except GLib.Error:
+            return self.toast(f'Nie można otworzyć: {os.path.basename(t.path)}')
+        self.cur = t
+        self.anchor = t
+        self.area.set_pix(pix)
+        v, self.view0 = self.view0, None
+        if v and v['path'] == t.path:
+            self.area.set_view(v['zoom'], v['cx'], v['cy'])
+        self.sync()
+        GLib.idle_add(self.reveal, t)
+
+    def drop(self, t):
+        i = self.thumbs.index(t)
+        if t.cell.get_parent() is self.tgrid:
+            self.tgrid.remove(t.cell)
+        self.thumbs.remove(t)
+        self.selected.discard(t)
+        if self.anchor is t:
+            self.anchor = None
+        self.gc()
+        self.reflow(True)
+        if t is self.cur:
+            if self.thumbs:
+                return self.show(self.thumbs[min(i, len(self.thumbs) - 1)])
+            self.cur = None
+            self.area.clear()
+        self.sync()
+
+    def on_spin(self, *_):
+        if self.lock:
+            return
+        mw, mh = self.maxdim
+        x, y, w, h = (int(self.spins[k].get_value()) for k in 'xywh')
+        x, y = min(x, mw - 1), min(y, mh - 1)
+        self.store([x, y, max(1, min(w, mw - x)), max(1, min(h, mh - y))])
+        self.dirty = True
+        self.sync()
+
+    def sync(self):
+        a, n, cur = self.area, len(self.thumbs), self.cur
+        # kadr i kolor widoku zależą od tego, czy aktywny obraz ma tryb indywidualny
+        a.sel = self.crop_of(cur) if cur else self.general
+        a.color = GREEN if cur and cur.group else ACCENT
+        a.label = self.tag_of(cur) if cur else None
+        s = a.sel
+        self.lock = True
+        self.maxdim = ((max(t.dims[0] for t in self.thumbs), max(t.dims[1] for t in self.thumbs))
+                       if n else (100000, 100000))
+        for k, v in (('x', self.maxdim[0]), ('y', self.maxdim[1]),
+                     ('w', self.maxdim[0]), ('h', self.maxdim[1])):
+            self.spins[k].set_range(0, v)
+        for k, v in zip('xywh', s or [0, 0, *a.size]):
+            self.spins[k].set_value(v)
+        self.lock = False
+
+        if cur:
+            pw, ph = a.size
+            txt = f'Obraz: {pw}×{ph} px'
+            if cur.group:
+                txt += f' · kadr indywidualny #{cur.group}'
+            if s and self.ratio(cur):
+                txt += ' · kadr przeskalowany pod ten obraz'
+            if s and not a.vis():
+                txt += ' · kadr poza obrazem'
+            self.info.set_text(txt)
+            self.info.set_tooltip_text(txt)
+        else:
+            self.info.set_text('')
+            self.info.set_tooltip_text(None)
+
+        can = (bool(self.thumbs) and not self.loading and not self.saving
+               and any(self.crop_of(t) for t in self.thumbs))
+        self.b_save.set_sensitive(can)
+        self.b_as.set_sensitive(can)
+        self.bgrip.set_visible(self.mode == 'bottom' and n > 0)
+        self.b_desel.set_visible(len(self.selected) > 0)
+        a.queue_draw()
+        for t in self.thumbs:
+            t.current = t is cur
+            t.selected = t in self.selected
+            t.queue_draw()
+            tip = t.name + '\nŚrodkowy przycisk myszy — pokaż w menedżerze plików' + ('\n% — kadr przeskalowany pod ten obraz'
+                            if self.raw_of(t) and self.ratio(t) else '')
+            if tip != t.tip:
+                t.tip = tip
+                t.set_tooltip_text(tip)
+        i = self.thumbs.index(cur) if cur in self.thumbs else -1
+        self.b_prev.set_sensitive(i > 0)
+        self.b_next.set_sensitive(0 <= i < n - 1)
+        self.upd_indiv()
+        self.upd_loading()
+        self.persist_soon()
+
+    # --- pokazywanie zapisanych plików w menedżerze plików ---
+    def reveal_label(self, paths, saved=False):
+        """Etykieta przycisku: przy kilku folderach mówi, ile okien menedżera plików się otworzy."""
+        n = len({os.path.dirname(p) for p in paths})
+        return ('Pokaż zapisane ' if saved else 'Pokaż ') + ('w folderze' if n <= 1 else f'w folderach ({n} {okna(n)})')
+
+    def reveal_files(self, paths):
+        """Jedno okno menedżera plików na folder. Jeśli menedżer to potrafi, zaznacza w nim wszystkie
+        zapisane pliki z tego folderu; w przeciwnym razie (np. starszy Nemo, który otwierał osobne
+        okno na każdy plik) zaznacza pierwszy z nich."""
+        groups = {}
+        for p in paths:
+            if os.path.exists(p):
+                groups.setdefault(os.path.dirname(p), []).append(p)
+        if not groups:
+            return self.toast('Zapisane pliki już nie istnieją')
+        every = fm_selects_all()
+
+        def fallback(folder):
+            Gtk.FileLauncher.new(Gio.File.new_for_path(folder)).launch(self, None, lambda *_: None)
+
+        try:
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        except GLib.Error:
+            bus = None
+        for folder, files in groups.items():
+            if bus is None:
+                fallback(folder)
+                continue
+            uris = [Gio.File.new_for_path(f).get_uri() for f in (files if every else files[:1])]
+
+            def done(b, res, folder=folder):
+                try:
+                    b.call_finish(res)
+                except GLib.Error:
+                    fallback(folder)
+
+            bus.call('org.freedesktop.FileManager1', '/org/freedesktop/FileManager1',
+                     'org.freedesktop.FileManager1', 'ShowItems', GLib.Variant('(ass)', (uris, '')),
+                     None, Gio.DBusCallFlags.NONE, -1, None, done)
+        if not every and any(len(v) > 1 for v in groups.values()):
+            self.toast('Ten menedżer plików potrafi zaznaczyć w oknie tylko jeden plik — '
+                       'zaznaczono pierwszy z zapisanych.', timeout=6)
+
+    # --- polecenia: opis zmian dla każdego obrazu (do skopiowania) ---
+    def commands_text(self, scheme, now, dest):
+        """Same fakty: co przyciąć, jakim kadrem i do jakiej nazwy — osobno dla każdego obrazu."""
+        lines, n = [], 0
+        for i, t in enumerate(self.thumbs, 1):
+            crop = self.crop_of(t)
+            if not crop:
+                continue
+            x, y, w, h = crop
+            iw, ih = t.dims
+            if x >= iw or y >= ih:
+                continue    # kadr poza obrazem — tak samo jak przy zapisie
+            w, h = min(w, iw - x), min(h, ih - y)
+            name, _fmt = out_name(t.path, scheme, now, i)
+            out = unique(os.path.join(dest or save_dir(t.path), name))
+            n += 1
+            note = '; kadr przeskalowany pod ten obraz' if self.ratio(t) else ''
+            lines.append(f'{n}. Przytnij: {t.path}')
+            lines.append(f'   Kadr: x={x}, y={y}, szerokość={w}, wysokość={h} px '
+                         f'(od lewego górnego rogu; obraz ma {iw}×{ih} px{note})')
+            lines.append(f'   Zapisz jako: {out}')
+            lines.append('')
+        return '\n'.join(lines).strip()
+
+    # --- zapis ---
+    def quick_save(self, g, n, x, y):
+        """Środkowy przycisk na „Zapisz jako”: zapis od razu, bez dialogu i potwierdzenia."""
+        if self.b_as.get_sensitive() and not self.saving:
+            self.save(False)
+
+    def ask_overwrite(self, _):
+        nc = sum(1 for t in self.thumbs if self.crop_of(t))
+        d = Adw.AlertDialog(heading='Zastąpić oryginalne?',
+                            body=f'Obrazy z kadrem ({nc}) zostaną zastąpione przyciętymi wersjami — każdy wg '
+                                 'swojego kadru. Kopie oryginałów zostaną zachowane, '
+                                 'więc możesz to cofnąć przyciskiem „Cofnij”.')
+        fb = [t for t in self.thumbs if self.crop_of(t)
+              and not WRITABLE.get(os.path.splitext(t.path)[1].lower().lstrip('.'))]
+        if fb:
+            exts = ', '.join(sorted({os.path.splitext(t.path)[1].lower() or '(brak)' for t in fb}))
+            d.set_body(d.get_body() + f'\n\nUwaga: dla {len(fb)} z tych obrazów system nie obsługuje zapisu '
+                       f'w ich formacie ({exts}). Nie da się ich zastąpić — kadr zapisze się jako nowy '
+                       'plik PNG obok oryginału, a oryginał zostanie bez zmian. '
+                       '„Cofnij” usunie ten nowy plik.')
+        d.add_response('no', 'Anuluj')
+        d.add_response('yes', 'Zastąp')
+        d.set_response_appearance('yes', Adw.ResponseAppearance.DESTRUCTIVE)
+        d.set_default_response('no')
+        d.set_close_response('no')
+        d.connect('response', lambda d, r: self.save(True) if r == 'yes' else None)
+        d.present(self)
+
+    def ask_save_as(self, _):
+        now = datetime.now()
+        n = sum(1 for t in self.thumbs if self.crop_of(t))
+        ex = (self.cur or self.thumbs[0]).path
+        has_paste = any(os.path.dirname(t.path) == PASTE_DIR for t in self.thumbs)
+        st = {'scheme': self.scheme}
+        self.dest = None
+
+        d = Adw.Dialog(title='Zapisz jako', follows_content_size=True)
+        lst = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=['boxed-list'], width_request=460)
+
+        r_dir = Adw.ActionRow(title='Folder zapisu')
+        b_reset = Gtk.Button(label='Obok oryginałów', valign=Gtk.Align.CENTER, css_classes=['flat'])
+        b_pick = Gtk.Button(label='Wybierz…', valign=Gtk.Align.CENTER)
+        r_dir.add_suffix(b_reset)
+        r_dir.add_suffix(b_pick)
+
+        r_scheme = Adw.ActionRow(title='Schemat nazwy')
+        b_edit = Gtk.Button(label='Edytuj', valign=Gtk.Align.CENTER)
+        r_scheme.add_suffix(b_edit)
+
+        r_edit = Adw.EntryRow(title='Schemat (bez rozszerzenia)', visible=False)
+        r_edit.set_text(st['scheme'])
+
+        r_tok = Adw.ActionRow(title='Wstaw', visible=False)
+        tb = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
+
+        def insert(tok):
+            txt, pos = r_edit.get_text(), r_edit.get_position()
+            r_edit.set_text(txt[:pos] + tok + txt[pos:])
+            r_edit.grab_focus()
+            r_edit.set_position(pos + len(tok))
+
+        for label, tok in (('Nazwa', '[nazwa]'), ('Nr', '[nr]'), ('Data', '%Y%m%d'), ('Godz.', '%H%M%S')):
+            tbtn = Gtk.Button(label=label, tooltip_text=f'Wstaw {tok}')
+            tbtn.connect('clicked', lambda b, t=tok: insert(t))
+            tb.append(tbtn)
+        b_def = Gtk.Button(label='Domyślny', css_classes=['flat'], tooltip_text=DEFAULT_SCHEME)
+        b_def.connect('clicked', lambda b: r_edit.set_text(DEFAULT_SCHEME))
+        tb.append(b_def)
+        r_tok.add_suffix(tb)
+
+        r_prev = Adw.ActionRow(title='Podgląd nazwy')
+        r_prev.set_subtitle_selectable(True)
+
+        # kopiowanie poleceń: sama płaska ikona w prawym górnym rogu (na wierzchu), opis tylko w podpowiedzi
+        copy_icon = Icon(draw_copy_icon)
+        b_copy = Gtk.Button(css_classes=['flat', 'circular'], child=copy_icon, halign=Gtk.Align.END,
+                            valign=Gtk.Align.START, margin_top=8, margin_end=8,
+                            tooltip_text='Kopiuj polecenia dla obrazów\n'
+                                         'Do schowka trafia lista: co przyciąć, jakim kadrem i do jakiej '
+                                         'nazwy — osobno dla każdego obrazu.')
+        b_copy.set_sensitive(bool(self.commands_text(st['scheme'], now, None)))
+
+        for r in (r_dir, r_scheme, r_edit, r_tok, r_prev):
+            lst.append(r)
+
+        hint = dim(SCHEME_HELP)
+        hint.set_wrap(True)
+        hint.set_xalign(0)
+        hint.set_max_width_chars(50)
+        hint.set_visible(False)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        box.append(lst)
+        box.append(hint)
+
+        def refresh():
+            scheme = st['scheme']
+            name, _fmt = out_name(ex, scheme, now, 1)
+            folder = self.dest or save_dir(ex)
+            default = 'Obok oryginałów — każdy plik w swoim folderze'
+            if has_paste:
+                default += '\n(obrazy wklejone ze schowka trafią do folderu Obrazy)'
+            r_dir.set_subtitle(GLib.markup_escape_text(short(self.dest)) if self.dest else default)
+            b_reset.set_sensitive(bool(self.dest))
+            r_scheme.set_subtitle(
+                f'<span foreground="#487cdf" weight="bold">{GLib.markup_escape_text(scheme)}</span>[rozszerzenie]')
+            # podgląd: 1. linia — sama nazwa, 2. — folder, 3. — informacja o pozostałych obrazach
+            r_prev.set_subtitle(
+                GLib.markup_escape_text(name) + '\n'
+                + GLib.markup_escape_text(short(folder)) + '\n'
+                + GLib.markup_escape_text(f'Tak samo zapiszą się wszystkie obrazy z kadrem ({n}).'))
+
+        def picked(fd, res):
+            try:
+                f = fd.select_folder_finish(res)
+            except GLib.Error:
+                return
+            self.dest = f.get_path()
+            refresh()
+
+        def pick(_):
+            fd = Gtk.FileDialog(title='Folder zapisu')
+            fd.set_initial_folder(Gio.File.new_for_path(self.dest or save_dir(ex)))
+            fd.select_folder(self, None, picked)
+
+        def reset(_):
+            self.dest = None
+            refresh()
+
+        def toggle(*_):
+            on = not r_edit.get_visible()
+            r_edit.set_visible(on)
+            r_tok.set_visible(on)
+            hint.set_visible(on)
+            b_edit.set_label('Gotowe' if on else 'Edytuj')
+            if on:
+                r_edit.grab_focus()
+                r_edit.set_position(-1)
+
+        def on_edit(e):
+            st['scheme'] = e.get_text().strip() or DEFAULT_SCHEME
+            refresh()
+
+        def copy(_):
+            text = self.commands_text(st['scheme'], now, self.dest)
+            if not text:
+                return
+            cb = self.get_clipboard()
+            cb.set_content(Gdk.ContentProvider.new_for_value(GObject.Value(GObject.TYPE_STRING, text)))
+            copy_icon.set_state(True)   # ikona na chwilę zmienia się w ptaszek
+
+            def back():
+                copy_icon.set_state(None)
+                return GLib.SOURCE_REMOVE
+            GLib.timeout_add(1800, back)
+
+        b_pick.connect('clicked', pick)
+        b_reset.connect('clicked', reset)
+        b_edit.connect('clicked', toggle)
+        b_copy.connect('clicked', copy)
+        r_edit.connect('changed', on_edit)
+        r_edit.connect('entry-activated', toggle)
+        refresh()
+
+        def answer(dlg, r):
+            if r != 'save':
+                return
+            self.scheme = st['scheme']
+            self.persist_soon()
+            self.save(False, now, self.dest)
+
+        head_l = Gtk.Label(label='Zapisz jako', css_classes=['title-2'], wrap=True)
+        body_l = Gtk.Label(label='Przycięte kopie zostaną zapisane jako nowe pliki. Oryginały się nie zmienią.',
+                           wrap=True, justify=Gtk.Justification.CENTER, max_width_chars=50)
+        b_cancel = Gtk.Button(label='Anuluj')
+        b_ok = Gtk.Button(label='Zapisz', css_classes=['suggested-action'])
+        b_cancel.connect('clicked', lambda b: d.close())
+
+        def ok(_):
+            d.close()
+            answer(d, 'save')
+        b_ok.connect('clicked', ok)
+        btns = Gtk.Box(spacing=12, homogeneous=True)
+        btns.append(b_cancel)
+        btns.append(b_ok)
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14,
+                      margin_top=24, margin_bottom=20, margin_start=24, margin_end=24)
+        for w in (head_l, body_l, box, btns):
+            col.append(w)
+        # przycisk kopiowania leży na wierzchu w prawym górnym rogu — nie zajmuje wysokości
+        ov = Gtk.Overlay(child=col)
+        ov.add_overlay(b_copy)
+        d.set_child(ov)
+        d.set_default_widget(b_ok)
+        d.set_focus(b_ok)
+        d.present(self)
+
+    def save(self, overwrite, now=None, dest=None):
+        """Zapis w tle: kadry są „zamrażane” w zadaniu, a pliki przetwarza osobny wątek, więc okno
+        nie zamarza. Jeśli trwa to dłużej niż chwilę, pojawia się okno postępu."""
+        if self.saving:
+            return
+        now = now or datetime.now()
+        items, skip = [], 0
+        for i, t in enumerate(self.thumbs, 1):
+            crop = self.crop_of(t)
+            if crop:
+                items.append({'nr': i, 'path': t.path, 'crop': list(crop), 'group': t.group})
+            else:
+                skip += 1
+        if not items:
+            return self.toast('Żaden obraz nie ma kadru')
+        job = {'overwrite': overwrite, 'scheme': '[nazwa]' if overwrite else self.scheme, 'now': now,
+               'dest': dest, 'items': items, 'skip': skip,
+               'general': list(self.general) if self.general else None,
+               'groups': {str(g): c for g, c in self.groups.items()},
+               'refs': {str(k): list(v) for k, v in self.refs.items()}}
+        if self.sticky_kind == 'errors':
+            self.errors = None
+            self.drop_sticky()      # nowy zapis zastępuje stary raport błędów
+        self.busy_begin(len(items), overwrite)
+        threading.Thread(target=self.save_worker, args=(job,), daemon=True).start()
+
+    def busy_begin(self, total, overwrite):
+        self.saving = True
+        self.save_prog = {'k': 0, 'total': total, 'name': '', 'phase': 'save', 'overwrite': overwrite}
+        self.tv.set_can_target(False)       # myszka nie dociera do interfejsu, dopóki trwa zapis
+        self.b_save.set_sensitive(False)
+        self.b_as.set_sensitive(False)
+        self.save_timer = GLib.timeout_add(SAVE_DELAY, self.save_dialog)
+        self.upd_title()
+
+    def busy_end(self):
+        if self.save_timer:
+            GLib.source_remove(self.save_timer)
+            self.save_timer = 0
+        d, self.save_dlg = self.save_dlg, None
+        if d:
+            d.force_close()
+        self.saving = False
+        self.save_prog = None
+        self.tv.set_can_target(True)
+        self.upd_title()
+
+    def save_dialog(self):
+        """Okno postępu — pojawia się dopiero, gdy zapis trwa dłużej niż SAVE_DELAY."""
+        self.save_timer = 0
+        if not self.saving or self.save_dlg:
+            return GLib.SOURCE_REMOVE
+        d = Adw.Dialog(follows_content_size=True)
+        d.set_can_close(False)
+        self.sv_title = Gtk.Label(css_classes=['title-2'], wrap=True)
+        self.sv_bar = Gtk.ProgressBar(show_text=True, width_request=380)
+        self.sv_file = dim('')
+        self.sv_file.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
+        self.sv_file.set_max_width_chars(48)
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
+                      margin_top=24, margin_bottom=24, margin_start=28, margin_end=28)
+        for w in (self.sv_title, self.sv_bar, self.sv_file):
+            col.append(w)
+        d.set_child(col)
+        self.save_dlg = d
+        self.save_paint()
+        d.present(self)
+        return GLib.SOURCE_REMOVE
+
+    def save_paint(self):
+        p = self.save_prog
+        if not p or not self.save_dlg:
+            return
+        thumbs = p['phase'] == 'thumbs'
+        k, total = p['k'], p['total']
+        if thumbs:
+            self.sv_title.set_text('Odświeżanie miniatur…')
+            self.sv_bar.set_text(f'Miniatura {k} z {total}')
+        else:
+            self.sv_title.set_text('Zastępowanie oryginałów…' if p['overwrite'] else 'Zapisywanie obrazów…')
+            self.sv_bar.set_text(f'Obraz {k} z {total}')
+        frac = ((k if thumbs else max(k - 1, 0)) / total) if total else 1.0
+        self.sv_bar.set_fraction(min(1.0, max(0.0, frac)))
+        self.sv_file.set_text(p['name'])
+
+    def save_step(self, k, total, name):
+        """Z wątku zapisu (przez idle_add): aktualnie przetwarzany obraz."""
+        if self.saving and self.save_prog:
+            self.save_prog.update(k=k, total=total, name=name)
+            self.save_paint()
+            self.upd_title()
+        return GLib.SOURCE_REMOVE
+
+    def save_worker(self, job):
+        """Wątek zapisu — nie dotyka widgetów, do interfejsu trafiają tylko wiadomości przez idle_add."""
+        res = {'done': 0, 'errors': [], 'items': [], 'outs': [], 'abort': None}
+        try:
+            self.save_run(job, res)
+        except Exception as e:      # nieprzewidziany błąd nie może zostawić okna w trybie „zapisywania”
+            res['errors'].append({'path': '', 'why': f'Nieoczekiwany błąd: {err_text(e)}'})
+        GLib.idle_add(self.save_finished, job, res)
+
+    def save_run(self, job, res):
+        overwrite, scheme, now, dest = job['overwrite'], job['scheme'], job['now'], job['dest']
+        if overwrite:
+            undo_clear()
+            try:
+                os.makedirs(UNDO_DIR, exist_ok=True)
+            except OSError as e:
+                res['abort'] = f'Nie można utworzyć kopii zapasowej ({err_text(e)}) — nic nie zmieniono'
+                return
+        total = len(job['items'])
+        for k, it in enumerate(job['items'], 1):
+            p = it['path']
+            GLib.idle_add(self.save_step, k, total, os.path.basename(p))
+            x, y, w, h = it['crop']
+            backup, out, stage = None, None, 'odczyt obrazu'
+            try:
+                pix = load(p)
+                pw, ph = pix.get_width(), pix.get_height()
+                if x >= pw or y >= ph:
+                    res['errors'].append({'path': p, 'why': f'kadr leży poza obrazem ({pw}×{ph} px)'})
+                    continue
+                sub = pix.new_subpixbuf(x, y, min(w, pw - x), min(h, ph - y))
+                name, fmt = out_name(p, scheme, now, it['nr'])
+                out = os.path.join(dest or save_dir(p), name)
+                if overwrite and out == p:
+                    # kopia oryginału przed nadpisaniem — bez niej nic nie nadpisujemy
+                    stage = 'kopia zapasowa oryginału'
+                    backup = os.path.join(UNDO_DIR, f'{len(res["items"])}.bak')
+                    shutil.copy2(p, backup)
+                else:
+                    # kopia nigdy nie nadpisuje istniejącego pliku (w tym oryginału)
+                    out = unique(out)
+                stage = 'zapis pliku'
+                opts = (['quality'], ['95']) if fmt == 'jpeg' else ([], [])
+                try:
+                    sub.savev(out, fmt, *opts)
+                except GLib.Error:
+                    if backup:
+                        shutil.copy2(backup, p)
+                    raise
+            except (GLib.Error, OSError) as e:
+                res['errors'].append({'path': p, 'why': f'{stage}: {err_text(e)}'})
+                continue
+            res['done'] += 1
+            if overwrite:
+                res['items'].append({'orig': p, 'backup': backup, 'out': out, 'group': it['group']})
+            else:
+                res['outs'].append(out)
+
+    def save_finished(self, job, res):
+        """Wątek skończył: zapisujemy manifest cofania, czyścimy kadry (po zastąpieniu) i odświeżamy
+        miniatury po jednej na klatkę (też bez zamrażania)."""
+        if res['abort']:
+            self.undo_m = undo_load()
+            self.upd_undo()
+            self.busy_end()
+            self.sync()
+            self.toast(res['abort'])
+            return GLib.SOURCE_REMOVE
+        overwrite, done = job['overwrite'], res['done']
+        if overwrite:
+            if res['items']:
+                try:
+                    with open(UNDO_MAN, 'w') as f:
+                        json.dump({'crop': job['general'], 'groups': job['groups'], 'refs': job['refs'],
+                                   'items': res['items']}, f)
+                except OSError:
+                    pass
+                self.undo_m = undo_load()
+            else:
+                undo_clear()
+                self.undo_m = None
+            self.upd_undo()
+        if done:
+            self.dirty = False
+        changed = set()
+        if overwrite and done:
+            # oryginały są już przycięte — te same kadry drugi raz nie miałyby sensu
+            self.general = None
+            self.groups = {}
+            self.refs = {}
+            for t in self.thumbs:
+                t.group = None
+            changed = {it['orig'] for it in res['items'] if it['backup']}
+        todo = [t for t in self.thumbs if t.path in changed]
+        if not todo:
+            self.save_done(job, res)
+            return GLib.SOURCE_REMOVE
+        self.save_prog.update(phase='thumbs', k=0, total=len(todo), name='')
+        self.save_paint()
+        self.upd_title()
+        self.reload_thumbs(todo, lambda: self.save_done(job, res))
+        return GLib.SOURCE_REMOVE
+
+    def reload_thumbs(self, todo, done):
+        """Odświeża miniatury po zmianie plików — po jednej na klatkę, żeby okno nie zamarzało."""
+        todo = list(todo)
+        n = len(todo)
+
+        def tick():
+            if todo:
+                t = todo.pop(0)
+                if self.save_prog:
+                    self.save_prog.update(k=n - len(todo), name=t.name)
+                    self.save_paint()
+                    self.upd_title()
+                try:
+                    t.load()
+                except GLib.Error:
+                    pass
+                return GLib.SOURCE_CONTINUE
+            done()
+            return GLib.SOURCE_REMOVE
+        GLib.idle_add(tick)
+
+    def save_done(self, job, res):
+        self.busy_end()
+        if job['overwrite'] and res['done'] and self.thumbs:
+            self.show(self.cur or self.thumbs[0])
+        else:
+            self.sync()
+        self.report_save(job, res)
+
+    def report_save(self, job, res):
+        done, errs, outs, skip = res['done'], res['errors'], res['outs'], job['skip']
+        msg = f'Zapisano: {done}' + (f', błędy: {len(errs)}' if errs else '') + (f', bez kadru: {skip}' if skip else '')
+        if errs:
+            # toast z błędami zostaje do otwarcia nowych obrazów; „Szczegóły” pokazują, co i dlaczego zawiodło
+            self.errors = {'title': 'Błędy zapisu', 'msg': msg, 'errs': errs, 'outs': outs,
+                           'intro': f'Zapisano: {done}. Tych obrazów nie udało się przyciąć i zapisać:'}
+            self.show_sticky('errors')
+        elif outs:
+            self.toast(msg, self.reveal_label(outs), lambda: self.reveal_files(outs), 10)
+        else:
+            self.toast(msg)
+
+    def undo(self, _):
+        m = self.undo_m
+        if not m or self.saving:
+            return
+        ok, errs = 0, []
+        for it in m['items']:
+            try:
+                if it['backup']:
+                    shutil.copy2(it['backup'], it['orig'])
+                elif os.path.exists(it['out']):
+                    os.remove(it['out'])  # plik utworzony obok oryginału (np. PNG)
+                ok += 1
+            except OSError as e:
+                errs.append({'path': it['orig'], 'why': err_text(e)})
+        if not errs:
+            undo_clear()
+            self.undo_m = None
+        self.upd_undo()
+        if ok and not self.has_crops():
+            # przywracamy kadr ogólny, grupy (#N), wzorce kadrów i przynależność obrazów do grup
+            gs = parse_groups(m.get('groups'))
+            self.general = m['crop'] if valid_crop(m.get('crop')) else None
+            self.groups = gs
+            self.refs = parse_refs(m.get('refs'))
+            gm = {it['orig']: it.get('group') for it in m['items']}
+            for t in self.thumbs:
+                g = gm.get(t.path)
+                t.group = g if g in gs else None
+            self.gc()
+            if self.has_crops():
+                self.dirty = True
+        for t in self.thumbs:
+            try:
+                t.load()
+            except GLib.Error:
+                pass
+        if self.cur:
+            self.show(self.cur)
+        else:
+            self.sync()
+        msg = f'Przywrócono: {ok}' + (f', błędy: {len(errs)}' if errs else '')
+        if errs:
+            self.errors = {'title': 'Błędy przywracania', 'msg': msg, 'errs': errs, 'outs': [],
+                           'intro': f'Przywrócono: {ok}. Tych plików nie udało się przywrócić '
+                                    '(kopie zapasowe zostają — można spróbować ponownie):'}
+            self.show_sticky('errors')
+        else:
+            self.toast(msg)
+
+
+class App(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id='local.Kadr', flags=Gio.ApplicationFlags.HANDLES_OPEN)
+
+    def do_startup(self):
+        Adw.Application.do_startup(self)
+        Gtk.Window.set_default_icon_name('local.Kadr')
+        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+        try:
+            # suwaki nakładkowe (cienkie, nie zabierają miejsca) — niezależnie od ustawień systemu
+            Gtk.Settings.get_default().set_property('gtk-overlay-scrolling', True)
+        except Exception:
+            pass
+        p = Gtk.CssProvider()
+        p.load_from_string(CSS)
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), p,
+                                                  Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        st = load_state()
+        keep = set(st['images'])
+        if st['cleared']:
+            keep |= set(st['cleared']['paths'])
+        purge_pasted(keep)
+
+    def win(self):
+        return self.get_active_window() or Win(self)
+
+    def do_activate(self):
+        self.win().present()
+
+    def do_open(self, files, n, hint):
+        w = self.win()
+        w.add_files([f.get_path() for f in files if f.get_path()])
+        w.present()
+
+
+sys.exit(App().run(sys.argv))
