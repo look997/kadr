@@ -58,8 +58,8 @@ say "sha256 $SHA  ($(du -h "dist/$TARBALL" | cut -f1), $(tar -tzf "dist/$TARBALL
 say "PKGBUILD: pkgver=$VER, sha256sums"
 sed -i -E "s|^pkgver=.*|pkgver=$VER|" PKGBUILD
 sed -i -E "s|^sha256sums=\(.*\)|sha256sums=('$SHA')|" PKGBUILD
-grep -q "^source=(\"\$pkgname-\$pkgver.tar.gz::\$url/releases/download/v\$pkgver/$TARBALL\")" PKGBUILD \
-  || die "linia source= w PKGBUILD nie wskazuje na asset release v\$pkgver/$TARBALL — popraw ręcznie"
+grep -qF "releases/download/v\$pkgver/$TARBALL" PKGBUILD \
+  || die "PKGBUILD nie wskazuje source= na asset release v\$pkgver/$TARBALL — popraw tę linię ręcznie"
 
 # 3) .SRCINFO generowany, aur/ lustrzane (aur/LICENSE = repo LICENSE; PKGBUILD deklaruje MIT)
 say ".SRCINFO z PKGBUILD"
