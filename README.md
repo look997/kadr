@@ -102,6 +102,20 @@ kadr ~/Obrazy            # cały folder
 | `~/.cache/kadr/undo/` | kopie oryginałów do *Cofnij* |
 | `~/.cache/kadr/pasted/` | obrazy wklejone ze schowka (sprzątane po 7 dniach) |
 
+## Rozwój
+
+```bash
+./install-local.sh              # dowiązanie ~/.local/bin/kadr do repo — dopisujesz i uruchamiasz
+./install-local.sh --restart    # to samo + zamknięcie starej instancji i start nowej
+./install-local.sh --copy       # instalacja jak zwykły program: kopia pliku, desktop, ikona
+./install-local.sh --package    # buduje prawdziwą paczkę i wypisuje jej zawartość
+```
+
+Pętla jest krótka: poprawiasz `kadr`, `./install-local.sh --restart`, gotowe. Składnia sprawdzana
+jest przed startem, a uruchamiany jest dokładnie ten plik, który edytujesz. Tryb domyślny to
+dowiązanie, więc po zmianie nie ma czego „instalować"; `--copy` służy do sprawdzenia, czy program
+działa jako zwykły plik, a `--package` do testu tego, co trafi do AUR.
+
 ## Budowanie pakietu AUR
 
 ```bash
