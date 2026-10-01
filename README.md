@@ -124,6 +124,21 @@ cd kadr
 makepkg -si
 ```
 
+## Wydanie nowej wersji
+
+Jedyne źródło prawdy to trzy pliki w repo: `kadr`, `local.Kadr.desktop`, `local.Kadr.svg`.
+Wszystko inne — tarball źródłowy, `PKGBUILD`, `.SRCINFO`, katalog `aur/` — jest z nich generowane,
+więc nie edytuj ich ręcznie.
+
+```bash
+git commit -am 'co się zmieniło' && git tag v1.0.1 && git push origin main --tags
+./release.sh 1.0.1              # tarball -> asset na GitHubie -> PKGBUILD/.SRCINFO -> AUR
+./release.sh --dry-run 1.0.1    # to samo bez wypychania
+```
+
+Skrypt odmawia pracy na brudnym drzewie, wymaga taga wypchniętego na GitHub i sprawdza,
+że asset na GitHubie zgadza się z `sha256` w `PKGBUILD`. Nigdy nie woła `sudo`.
+
 ## Uwagi
 
 - **Zastąp oryginalne** nigdy nie nadpisuje pliku bez wcześniejszej kopii — a gdy zapis się nie uda,
