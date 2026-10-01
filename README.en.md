@@ -4,6 +4,8 @@
 
 Kadr is a GTK4/libadwaita application for cropping multiple images. Apply one crop area to every image, or set individual crops for selected files.
 
+The full interface is available in English and Polish. The language follows your system locale.
+
 ## Features
 
 - Batch cropping with a shared crop area, or individual crops.

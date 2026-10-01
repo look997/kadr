@@ -1,0 +1,751 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: kadr\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-01 21:13+0200\n"
+"PO-Revision-Date: 2026-10-01 21:13+0200\n"
+"Last-Translator: Kadr contributors\n"
+"Language-Team: English\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: kadr:34
+msgid "Kadrowanie zbiorcze"
+msgstr "Batch Image Cropper"
+
+#: kadr:46
+msgid "[nazwa]_%Y%m%d-%H%M%S"
+msgstr "[name]_%Y%m%d-%H%M%S"
+
+#: kadr:70
+msgid "1:1 — kwadrat"
+msgstr "1:1 — square"
+
+#: kadr:71
+msgid "Jak obraz"
+msgstr "Match image"
+
+#: kadr:82
+msgid ""
+"Panel: na dole.\n"
+"Kliknij, aby przenieść go na prawo."
+msgstr ""
+"Panel: at the bottom.\n"
+"Click to move it to the right."
+
+#: kadr:83
+msgid ""
+"Panel: po prawej.\n"
+"Kliknij, aby go ukryć."
+msgstr ""
+"Panel: on the right.\n"
+"Click to hide it."
+
+#: kadr:84
+msgid ""
+"Panel ukryty.\n"
+"Kliknij, aby pokazać go na dole."
+msgstr ""
+"Panel hidden.\n"
+"Click to show it at the bottom."
+
+#: kadr:91
+msgid "Wybierz jeden lub wiele obrazów — wszystkie dostaną ten sam kadr."
+msgstr "Select one or more images — they will all use the same crop."
+
+#: kadr:92
+msgid "Kolejne obrazy dodają się do listy (duplikaty są pomijane)."
+msgstr "Additional images are added to the list (duplicates are skipped)."
+
+#: kadr:93
+msgid "Możesz też przeciągnąć je na okno albo wkleić przez Ctrl+V."
+msgstr "You can also drag them onto the window or paste them with Ctrl+V."
+
+#: kadr:95
+msgid ""
+"Kody daty: %Y rok, %m miesiąc, %d dzień, %H godzina, %M minuta, %S sekunda. "
+"[nazwa] to oryginalna nazwa pliku, [nr] — numer obrazu na liście. "
+"Rozszerzenie dodaje się samo."
+msgstr ""
+"Date codes: %Y year, %m month, %d day, %H hour, %M minute, %S second. [name] "
+"is the original filename, [number] is the image's position in the list. The "
+"extension is added automatically."
+
+#: kadr:99
+msgid "użyj ←/→ lub kółka myszy"
+msgstr "use ←/→ or the mouse wheel"
+
+#: kadr:545
+msgid "Przeciągnij, aby zmienić szerokość panelu"
+msgstr "Drag to change the panel width"
+
+#: kadr:551
+msgid "Przeciągnij, aby zmienić wysokość panelu (liczbę wierszy miniatur)"
+msgstr "Drag to change the panel height (number of thumbnail rows)"
+
+#: kadr:803
+msgid "Otwórz obrazy, aby zacząć"
+msgstr "Open images to get started"
+
+#: kadr:1172
+msgid "Otwórz obrazy"
+msgstr "Open Images"
+
+#: kadr:1179 kadr:2931 kadr:3068
+msgid "Zapisz jako"
+msgstr "Save As"
+
+#: kadr:1181
+msgid ""
+"Zapisuje przycięte kopie wszystkich załadowanych obrazów jako nowe pliki.\n"
+"Nazwę (schemat) można zmienić w dialogu, domyślnie [nazwa]_RRRRMMDD-"
+"GGMMSS[rozszerzenie].\n"
+"Domyślnie obok oryginałów, w dialogu można wybrać inny folder.\n"
+"Środkowy przycisk myszy: zapisuje od razu, bez dialogu — ostatnio użytym "
+"schematem nazwy, obok oryginałów."
+msgstr ""
+"Saves cropped copies of all loaded images as new files.\n"
+"You can change the filename pattern in the dialog. The default is "
+"[name]_%Y%m%d-%H%M%S[extension].\n"
+"Files are saved next to their originals by default; you can choose another "
+"folder in the dialog.\n"
+"Middle-click to save immediately without the dialog, using the most recently "
+"used filename pattern and saving next to the originals."
+
+#: kadr:1195
+msgid "Zastąp oryginalne"
+msgstr "Replace Originals"
+
+#: kadr:1197
+msgid ""
+"Zastępuje oryginalne pliki przyciętymi wersjami — dotyczy wszystkich "
+"załadowanych obrazów (każdy wg swojego kadru).\n"
+"Kopie oryginałów są zachowywane, więc można to cofnąć przyciskiem „Cofnij”.\n"
+"Formaty bez obsługi zapisu w systemie trafiają jako PNG obok oryginału."
+msgstr ""
+"Replaces the original files with cropped versions, applying each image's "
+"crop.\n"
+"Originals are backed up, so you can undo this with “Undo”.\n"
+"Formats that cannot be written by the system are saved as PNG files next to "
+"the originals."
+
+#: kadr:1202
+msgid "Cofnij"
+msgstr "Undo"
+
+#: kadr:1227
+msgid "Szer."
+msgstr "W"
+
+#: kadr:1227
+msgid "Wys."
+msgstr "H"
+
+#: kadr:1251
+msgid "Oddal (scroll w dół nad obrazem, ↓, −)"
+msgstr "Zoom out (scroll down over the image, ↓, −)"
+
+#: kadr:1253
+msgid ""
+"Dopasuj do okna\n"
+"Scroll nad obrazem, ↑/↓, +/− — zoom\n"
+"Prawy/środkowy przycisk myszy — przesuwanie\n"
+"←/→ lub kółko myszy poza obrazem — poprzedni/następny obraz"
+msgstr ""
+"Fit to window\n"
+"Scroll over the image, ↑/↓, +/− — zoom\n"
+"Right/middle mouse button — pan\n"
+"←/→ or the mouse wheel outside the image — previous/next image"
+
+#: kadr:1257
+msgid "Przybliż (scroll w górę nad obrazem, ↑, +)"
+msgstr "Zoom in (scroll up over the image, ↑, +)"
+
+#: kadr:1266
+msgid "Poprzedni obraz (←)"
+msgstr "Previous image (←)"
+
+#: kadr:1267
+msgid "Następny obraz (→)"
+msgstr "Next image (→)"
+
+#: kadr:1282
+msgid "Odwróć proporcje"
+msgstr "Swap aspect ratio"
+
+#: kadr:1283
+msgid "Wyśrodkuj kadr"
+msgstr "Center crop"
+
+#: kadr:1296
+msgid ""
+"Proporcje kadru\n"
+"Odwracanie proporcji i wyśrodkowanie kadru"
+msgstr ""
+"Crop aspect ratio\n"
+"Swap aspect ratio and center crop"
+
+#: kadr:1298
+msgid ""
+"Cofnij zmianę kadru (Ctrl+Z)\n"
+"Ctrl+Shift+Z — ponów\n"
+"Działa też na kadr zmieniany myszą i polami liczbowymi."
+msgstr ""
+"Undo crop change (Ctrl+Z)\n"
+"Ctrl+Shift+Z — redo\n"
+"Also works for crops changed with the mouse and numeric fields."
+
+#: kadr:1331
+msgid "Odznacz"
+msgstr "Deselect"
+
+#: kadr:1332
+msgid "Czyści zaznaczenie miniatur (Esc)"
+msgstr "Clears the thumbnail selection (Esc)"
+
+#: kadr:1334
+msgid "Wyczyść"
+msgstr "Clear"
+
+#: kadr:1335
+msgid "Usuwa wszystkie obrazy z listy (pliki na dysku zostają)"
+msgstr "Removes all images from the list (files on disk are kept)"
+
+#: kadr:1418
+#, python-brace-format
+msgid "Wyczyszczono listę obrazów ({count})"
+msgstr "Cleared {count} images from the list"
+
+#: kadr:1420
+msgid "Przywróć"
+msgstr "Restore"
+
+#: kadr:1424
+msgid "Szczegóły"
+msgstr "Details"
+
+#: kadr:1494
+msgid "Błąd ogólny"
+msgstr "General error"
+
+#: kadr:1501 kadr:2156 kadr:2208
+msgid "Zamknij"
+msgstr "Close"
+
+#: kadr:1871
+#, python-brace-format
+msgid "Nie znaleziono plików z poprzedniej sesji: {count}"
+msgstr "Could not find {count} files from the previous session"
+
+#: kadr:2117
+msgid "Cofnij zmianę kadru ogólnego"
+msgstr "Undo general crop change"
+
+#: kadr:2118
+#, python-brace-format
+msgid "Cofnij zmianę kadru indywidualnego #{key}"
+msgstr "Undo individual crop change #{key}"
+
+#: kadr:2119
+msgid ""
+" (Ctrl+Z)\n"
+"Ctrl+Shift+Z — ponów\n"
+"Każdy kadr (ogólny i każdy #N) ma własną historię.\n"
+"Działa też na kadr zmieniany myszą i polami liczbowymi."
+msgstr ""
+" (Ctrl+Z)\n"
+"Ctrl+Shift+Z — redo\n"
+"The general crop and each individual crop (#N) have separate histories.\n"
+"Also works for crops changed with the mouse and numeric fields."
+
+#: kadr:2148 kadr:2204
+msgid "Zamknąć bez zapisania kadru?"
+msgstr "Close without saving the crop?"
+
+#: kadr:2150 kadr:2205
+msgid ""
+"Kadr nie został zapisany w żadnym obrazie. Przy następnym uruchomieniu wróci "
+"razem z listą obrazów, a pliki na dysku zostaną bez zmian."
+msgstr ""
+"The crop has not been applied to any images. It will be restored with the "
+"image list next time you start the app; files on disk will remain unchanged."
+
+#: kadr:2155 kadr:2207
+msgid "Wróć"
+msgstr "Go Back"
+
+#: kadr:2194
+msgid "Trwa zapisywanie — zamknij okno, gdy się skończy"
+msgstr "Saving in progress — close the window when it is finished"
+
+#: kadr:2370
+#, python-brace-format
+msgid ""
+"Cofa ostatnie „Zastąp oryginalne”: przywraca oryginalne pliki ({count}) i "
+"kadry z tamtego momentu.\n"
+"Działa też po ponownym uruchomieniu programu."
+msgstr ""
+"Undo the last “Replace Originals” operation: restores the original files "
+"({count}) and crops from that point.\n"
+"This also works after restarting the app."
+
+#: kadr:2375
+msgid "Nic do cofnięcia — cofanie działa po użyciu „Zastąp oryginalne”."
+msgstr "Nothing to undo — undo is available after using “Replace Originals”."
+
+#: kadr:2393
+msgid "Tryb indywidualny — najpierw dodaj obrazy."
+msgstr "Individual crop mode — add images first."
+
+#: kadr:2395
+#, python-brace-format
+msgid ""
+"Wyłącz tryb indywidualny dla zaznaczonych obrazów ({count}) — wrócą do kadru "
+"ogólnego."
+msgstr ""
+"Turn off individual crop mode for the selected images ({count}) — they will "
+"use the general crop again."
+
+#: kadr:2398
+#, python-brace-format
+msgid "Nadaj zaznaczonym obrazom ({count}) wspólny, osobny kadr (nowy #N)."
+msgstr "Give the selected images ({count}) a shared individual crop (new #N)."
+
+#: kadr:2401
+#, python-brace-format
+msgid "Wyłącz tryb indywidualny (#{group}) — obraz wróci do kadru ogólnego."
+msgstr ""
+"Turn off individual crop mode (#{group}) — the image will use the general "
+"crop again."
+
+#: kadr:2404
+msgid ""
+"Tryb indywidualny: osobny kadr tylko dla tego obrazu.\n"
+"Ten obraz nie należy do zaznaczenia, więc dotyczy tylko jego — zaznaczenie "
+"zostaje bez zmian."
+msgstr ""
+"Individual crop mode: a separate crop for this image only.\n"
+"This image is not selected, so only it will be affected — the selection will "
+"remain unchanged."
+
+#: kadr:2407
+msgid ""
+"Tryb indywidualny: osobny kadr tylko dla tego obrazu.\n"
+"Zaznacz kilka miniatur (Ctrl/Shift+klik), żeby nadać im wspólny osobny kadr."
+msgstr ""
+"Individual crop mode: a separate crop for this image only.\n"
+"Select multiple thumbnails (Ctrl/Shift-click) to give them a shared "
+"individual crop."
+
+#: kadr:2415
+#, python-brace-format
+msgid "Ładowanie obrazów: {done}/{total}…"
+msgstr "Loading images: {done}/{total}…"
+
+#: kadr:2418 kadr:2422
+#, python-brace-format
+msgid " · zaznaczone: {count}"
+msgstr " · selected: {count}"
+
+#: kadr:2420
+#, python-brace-format
+msgid "Obrazy: {count}"
+msgstr "Images: {count}"
+
+#: kadr:2430
+#, python-brace-format
+msgid "Obrazy: {count} · zaznaczone: {count} · {nav}"
+msgstr "Images: {count} · selected: {count} · {nav}"
+
+#: kadr:2439
+#, python-brace-format
+msgid "ładowanie {done}/{total}"
+msgstr "loading {done}/{total}"
+
+#: kadr:2444
+#, python-brace-format
+msgid "odświeżanie miniatur {done}/{total}"
+msgstr "refreshing thumbnails {done}/{total}"
+
+#: kadr:2447
+#, python-brace-format
+msgid "zapisywanie {done}/{total}"
+msgstr "saving {done}/{total}"
+
+#: kadr:2455
+#, python-brace-format
+msgid "Ładowanie obrazów… {done}/{total}"
+msgstr "Loading images… {done}/{total}"
+
+#: kadr:2458
+msgid "Przywracanie sesji…"
+msgstr "Restoring session…"
+
+#: kadr:2475
+msgid "Obrazy"
+msgstr "Images"
+
+#: kadr:2481
+msgid "Wybierz obrazy"
+msgstr "Select images"
+
+#: kadr:2509
+msgid "W schowku nie ma obrazów ani plików"
+msgstr "There are no images or files on the clipboard"
+
+#: kadr:2516
+msgid "Nie można wkleić ze schowka"
+msgstr "Could not paste from the clipboard"
+
+#: kadr:2520
+msgid "W schowku nie ma plików lokalnych"
+msgstr "There are no local files on the clipboard"
+
+#: kadr:2526
+msgid "wklejony_"
+msgstr "pasted_"
+
+#: kadr:2528
+msgid "zapis nieudany"
+msgstr "save failed"
+
+#: kadr:2530
+msgid "Nie można wkleić obrazu ze schowka"
+msgstr "Could not paste the image from the clipboard"
+
+#: kadr:2537
+msgid "Trwa zapisywanie — dodaj obrazy, gdy się skończy"
+msgstr "Saving in progress — add images when it is finished"
+
+#: kadr:2611 kadr:2718
+msgid "Nie można otworzyć: "
+msgstr "Could not open: "
+
+#: kadr:2613
+#, python-brace-format
+msgid "Pominięto duplikaty: {count}"
+msgstr "Skipped {count} duplicates"
+
+#: kadr:2665
+msgid "Usuń z listy"
+msgstr "Remove from list"
+
+#: kadr:2761
+#, python-brace-format
+msgid "Obraz: {width}×{height} px"
+msgstr "Image: {width}×{height} px"
+
+#: kadr:2763
+#, python-brace-format
+msgid " · kadr indywidualny #{group}"
+msgstr " · individual crop #{group}"
+
+#: kadr:2765
+msgid " · kadr przeskalowany pod ten obraz"
+msgstr " · crop scaled to this image"
+
+#: kadr:2767
+msgid " · kadr poza obrazem"
+msgstr " · crop outside the image"
+
+#: kadr:2810
+msgid "Środkowy przycisk myszy — pokaż w menedżerze plików"
+msgstr "Middle-click to show in the file manager"
+
+#: kadr:2811 kadr:2886
+msgid "kadr przeskalowany pod ten obraz"
+msgstr "crop scaled to this image"
+
+#: kadr:2828
+msgid "Pokaż zapisane"
+msgstr "Show saved"
+
+#: kadr:2828
+msgid "Pokaż"
+msgstr "Show"
+
+#: kadr:2829
+msgid "w folderze"
+msgstr "in folder"
+
+#: kadr:2830
+#, python-brace-format
+msgid "w folderach ({count})"
+msgstr "in {count} folders"
+
+#: kadr:2841
+msgid "Zapisane pliki już nie istnieją"
+msgstr "The saved files no longer exist"
+
+#: kadr:2867
+msgid ""
+"Ten menedżer plików potrafi zaznaczyć w oknie tylko jeden plik — zaznaczono "
+"pierwszy z zapisanych."
+msgstr ""
+"This file manager can select only one file in a window — the first saved "
+"file was selected."
+
+#: kadr:2887
+#, python-brace-format
+msgid "{number}. Przytnij: {path}"
+msgstr "{number}. Crop: {path}"
+
+#: kadr:2888
+#, python-brace-format
+msgid ""
+"   Kadr: x={x}, y={y}, szerokość={width}, wysokość={height} px (od lewego "
+"górnego rogu; obraz ma {image_width}×{image_height} px{note})"
+msgstr ""
+"   Crop area: x={x}, y={y}, width={width}, height={height} px (from top "
+"left; image is {image_width}×{image_height} px{note})"
+
+#: kadr:2891
+#, python-brace-format
+msgid "   Zapisz jako: {path}"
+msgstr "   Save as: {path}"
+
+#: kadr:2903
+msgid "Zastąpić oryginalne?"
+msgstr "Replace originals?"
+
+#: kadr:2904
+#, python-brace-format
+msgid ""
+"Obrazy z kadrem ({count}) zostaną zastąpione przyciętymi wersjami — każdy wg "
+"swojego kadru. Kopie oryginałów zostaną zachowane, więc możesz to cofnąć "
+"przyciskiem „Cofnij”."
+msgstr ""
+"Images with a crop ({count}) will be replaced with cropped versions, each "
+"using its own crop. Backups of the originals will be kept, so you can undo "
+"this with “Undo”."
+
+#: kadr:2911
+#, python-brace-format
+msgid ""
+"\n"
+"\n"
+"Uwaga: dla {count} z tych obrazów system nie obsługuje zapisu w ich formacie "
+"({formats}). Nie da się ich zastąpić — kadr zapisze się jako nowy plik PNG "
+"obok oryginału, a oryginał zostanie bez zmian. „Cofnij” usunie ten nowy plik."
+msgstr ""
+"\n"
+"\n"
+"Note: this system cannot save {count} of these images in their current "
+"format ({formats}). They cannot be replaced — the crop will be saved as a "
+"new PNG file next to the original, which will remain unchanged. “Undo” will "
+"remove the new file."
+
+#: kadr:2915 kadr:3071
+msgid "Anuluj"
+msgstr "Cancel"
+
+#: kadr:2916
+msgid "Zastąp"
+msgstr "Replace"
+
+#: kadr:2934 kadr:3018
+msgid "Folder zapisu"
+msgstr "Save folder"
+
+#: kadr:2935
+msgid "Obok oryginałów"
+msgstr "Next to originals"
+
+#: kadr:2936
+msgid "Wybierz…"
+msgstr "Choose…"
+
+#: kadr:2940
+msgid "Schemat nazwy"
+msgstr "Filename pattern"
+
+#: kadr:2941 kadr:3031
+msgid "Edytuj"
+msgstr "Edit"
+
+#: kadr:2944
+msgid "Schemat (bez rozszerzenia)"
+msgstr "Pattern (without extension)"
+
+#: kadr:2945 kadr:2956
+msgid "[nazwa]"
+msgstr "[name]"
+
+#: kadr:2945 kadr:2956
+msgid "[nr]"
+msgstr "[number]"
+
+#: kadr:2947
+msgid "Wstaw"
+msgstr "Insert"
+
+#: kadr:2956
+msgid "Nazwa"
+msgstr "Name"
+
+#: kadr:2956
+msgid "Nr"
+msgstr "No."
+
+#: kadr:2957
+msgid "Data"
+msgstr "Date"
+
+#: kadr:2957
+msgid "Godz."
+msgstr "Time"
+
+#: kadr:2958
+#, python-brace-format
+msgid "Wstaw {token}"
+msgstr "Insert {token}"
+
+#: kadr:2961
+msgid "Domyślny"
+msgstr "Default"
+
+#: kadr:2966
+msgid "Podgląd nazwy"
+msgstr "Filename preview"
+
+#: kadr:2973
+msgid ""
+"Kopiuj polecenia dla obrazów\n"
+"Do schowka trafia lista: co przyciąć, jakim kadrem i do jakiej nazwy — "
+"osobno dla każdego obrazu."
+msgstr ""
+"Copy crop instructions\n"
+"Copies a list of what to crop, which crop to use, and the output filename "
+"for each image."
+
+#: kadr:2994
+msgid "Obok oryginałów — każdy plik w swoim folderze"
+msgstr "Next to originals — each file in its own folder"
+
+#: kadr:2996
+msgid ""
+"\n"
+"(obrazy wklejone ze schowka trafią do folderu Obrazy)"
+msgstr ""
+"\n"
+"(images pasted from the clipboard will be saved to the Pictures folder)"
+
+#: kadr:3001
+msgid "[rozszerzenie]"
+msgstr "[extension]"
+
+#: kadr:3006
+#, python-brace-format
+msgid "Tak samo zapiszą się wszystkie obrazy z kadrem ({count})."
+msgstr "All {count} cropped images will be saved the same way."
+
+#: kadr:3031
+msgid "Gotowe"
+msgstr "Done"
+
+#: kadr:3069
+msgid ""
+"Przycięte kopie zostaną zapisane jako nowe pliki. Oryginały się nie zmienią."
+msgstr ""
+"Cropped copies will be saved as new files. The originals will not be changed."
+
+#: kadr:3072
+msgid "Zapisz"
+msgstr "Save"
+
+#: kadr:3108
+msgid "Żaden obraz nie ma kadru"
+msgstr "No images have a crop"
+
+#: kadr:3170
+msgid "Odświeżanie miniatur…"
+msgstr "Refreshing thumbnails…"
+
+#: kadr:3171
+#, python-brace-format
+msgid "Miniatura {current} z {total}"
+msgstr "Thumbnail {current} of {total}"
+
+#: kadr:3173
+msgid "Zastępowanie oryginałów…"
+msgstr "Replacing originals…"
+
+#: kadr:3173
+msgid "Zapisywanie obrazów…"
+msgstr "Saving images…"
+
+#: kadr:3174
+#, python-brace-format
+msgid "Obraz {current} z {total}"
+msgstr "Image {current} of {total}"
+
+#: kadr:3193
+msgid "Nieoczekiwany błąd: "
+msgstr "Unexpected error: "
+
+#: kadr:3203
+#, python-brace-format
+msgid "Nie można utworzyć kopii zapasowej ({reason}) — nic nie zmieniono"
+msgstr "Could not create a backup ({reason}) — nothing was changed"
+
+#: kadr:3211
+msgid "odczyt obrazu"
+msgstr "reading image"
+
+#: kadr:3216
+#, python-brace-format
+msgid "kadr leży poza obrazem ({width}×{height} px)"
+msgstr "crop is outside the image ({width}×{height} px)"
+
+#: kadr:3224
+msgid "kopia zapasowa oryginału"
+msgstr "backing up original"
+
+#: kadr:3230
+msgid "zapis pliku"
+msgstr "writing file"
+
+#: kadr:3324
+#, python-brace-format
+msgid "Zapisano: {done}{errors}{skipped}"
+msgstr "Saved: {done}{errors}{skipped}"
+
+#: kadr:3326 kadr:3381
+#, python-brace-format
+msgid ", błędy: {count}"
+msgstr ", errors: {count}"
+
+#: kadr:3327
+#, python-brace-format
+msgid ", bez kadru: {count}"
+msgstr ", without a crop: {count}"
+
+#: kadr:3330
+msgid "Błędy zapisu"
+msgstr "Save errors"
+
+#: kadr:3331
+#, python-brace-format
+msgid "Zapisano: {done}. Tych obrazów nie udało się przyciąć i zapisać:"
+msgstr "Saved: {done}. Could not crop and save these images:"
+
+#: kadr:3380
+#, python-brace-format
+msgid "Przywrócono: {count}{errors}"
+msgstr "Restored: {count}{errors}"
+
+#: kadr:3383
+msgid "Błędy przywracania"
+msgstr "Restore errors"
+
+#: kadr:3384
+#, python-brace-format
+msgid ""
+"Przywrócono: {count}. Tych plików nie udało się przywrócić (kopie zapasowe "
+"zostają — można spróbować ponownie):"
+msgstr ""
+"Restored: {count}. Could not restore these files (backups have been kept; "
+"you can try again):"

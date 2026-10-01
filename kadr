@@ -5,6 +5,7 @@ Polski: Kadruj wiele obrazów wspólnym lub indywidualnym kadrem.
 English: Crop multiple images with a shared or individual crop area.
 """
 import os, re, sys, json, math, shutil, subprocess, threading, functools, time
+import gettext
 from datetime import datetime
 import gi
 gi.require_version('Gtk', '4.0')
@@ -16,7 +17,21 @@ gi.require_version('Pango', '1.0')
 from gi.repository import Adw, Gtk, Gdk, GdkPixbuf, Gio, GLib, GObject, Graphene, Pango
 import cairo
 
-APP_TITLE = 'Kadrowanie zbiorcze'
+
+def load_translations():
+    localedirs = (os.path.join(os.path.dirname(os.path.abspath(__file__)), 'locale'),
+                  os.path.join(sys.prefix, 'share', 'locale'))
+    for localedir in localedirs:
+        try:
+            return gettext.translation('kadr', localedir=localedir)
+        except FileNotFoundError:
+            continue
+    return gettext.NullTranslations()
+
+
+_ = load_translations().gettext
+
+APP_TITLE = _('Kadrowanie zbiorcze')
 ACCENT = (0x48 / 255, 0x7c / 255, 0xdf / 255)
 GREEN = (0x3e / 255, 0xc4 / 255, 0x6d / 255)
 YELLOW = (0xf5 / 255, 0xc2 / 255, 0x11 / 255)
@@ -28,7 +43,7 @@ OLD_STATE = os.path.join(GLib.get_user_config_dir(), 'kadr', 'crop.json')
 UNDO_DIR = os.path.join(GLib.get_user_cache_dir(), 'kadr', 'undo')
 UNDO_MAN = os.path.join(UNDO_DIR, 'manifest.json')
 PASTE_DIR = os.path.join(GLib.get_user_cache_dir(), 'kadr', 'pasted')
-DEFAULT_SCHEME = '[nazwa]_%Y%m%d-%H%M%S'
+DEFAULT_SCHEME = _('[nazwa]_%Y%m%d-%H%M%S')
 MAX_SCALE = 64
 ZOOM_STEP = 1.25
 
@@ -52,8 +67,8 @@ LOUPE_ZOOM = 6      # powiększenie lupki: tyle pikseli ekranu na jeden piksel o
 LOUPE_M = 10        # odstęp lupki od krawędzi pola kadrowania
 LOUPE_HOLD = 1400   # ms: jak długo lupka zostaje po zmianie kadru polem liczbowym
 HIST_MAX = 100      # maks. liczba kroków cofania kadru
-RATIOS = (('1:1', '1:1 — kwadrat'), ('5:4', '5:4'), ('4:3', '4:3'), ('3:2', '3:2'), ('16:10', '16:10'),
-          ('16:9', '16:9'), ('2:1', '2:1'), ('21:9', '21:9'), ('img', 'Jak obraz'))
+RATIOS = (('1:1', _('1:1 — kwadrat')), ('5:4', '5:4'), ('4:3', '4:3'), ('3:2', '3:2'), ('16:10', '16:10'),
+          ('16:9', '16:9'), ('2:1', '2:1'), ('21:9', '21:9'), ('img', _('Jak obraz')))
 
 NAV_FIRST = 380     # ms: po tylu przytrzymana strzałka zaczyna przewijać
 NAV_STEP = 70       # ms: minimalny odstęp między kolejnymi obrazami
@@ -64,24 +79,24 @@ NEMO_ALL = (6, 8)   # od tej wersji Nemo (poprawka ShowItems z maja 2026) zaznac
 
 PANEL_MODES = ('bottom', 'side', 'hidden')
 PANEL_TIP = {
-    'bottom': 'Panel: na dole.\nKliknij, aby przenieść go na prawo.',
-    'side': 'Panel: po prawej.\nKliknij, aby go ukryć.',
-    'hidden': 'Panel ukryty.\nKliknij, aby pokazać go na dole.',
+    'bottom': _('Panel: na dole.\nKliknij, aby przenieść go na prawo.'),
+    'side': _('Panel: po prawej.\nKliknij, aby go ukryć.'),
+    'hidden': _('Panel ukryty.\nKliknij, aby pokazać go na dole.'),
 }
 # pozycje widgetów pól kadru w siatce: (kolumna, wiersz, szerokość)
 GRID_BOTTOM = [(i, 0, 1) for i in range(11)]
 GRID_SIDE = [(0, 0, 1), (1, 0, 1), (2, 0, 1), (3, 0, 1), (0, 1, 1), (1, 1, 1), (2, 1, 1), (3, 1, 1),
              (0, 2, 4)]
 
-HINT = ('Wybierz jeden lub wiele obrazów — wszystkie dostaną ten sam kadr.',
-        'Kolejne obrazy dodają się do listy (duplikaty są pomijane).',
-        'Możesz też przeciągnąć je na okno albo wkleić przez Ctrl+V.')
+HINT = (_('Wybierz jeden lub wiele obrazów — wszystkie dostaną ten sam kadr.'),
+        _('Kolejne obrazy dodają się do listy (duplikaty są pomijane).'),
+        _('Możesz też przeciągnąć je na okno albo wkleić przez Ctrl+V.'))
 
-SCHEME_HELP = ('Kody daty: %Y rok, %m miesiąc, %d dzień, %H godzina, %M minuta, %S sekunda. '
-               '[nazwa] to oryginalna nazwa pliku, [nr] — numer obrazu na liście. '
-               'Rozszerzenie dodaje się samo.')
+SCHEME_HELP = _('Kody daty: %Y rok, %m miesiąc, %d dzień, %H godzina, %M minuta, %S sekunda. '
+                '[nazwa] to oryginalna nazwa pliku, [nr] — numer obrazu na liście. '
+                'Rozszerzenie dodaje się samo.')
 
-NAV_HINT = 'użyj ←/→ lub kółka myszy'
+NAV_HINT = _('użyj ←/→ lub kółka myszy')
 
 CSS = """
 @define-color window_bg_color #1f1f1e;
@@ -336,7 +351,8 @@ def apply_scheme(scheme, name, now, nr):
         s = now.strftime(scheme)
     except ValueError:
         s = scheme
-    s = s.replace('[nr]', str(nr)).replace('[nazwa]', name)
+    s = (s.replace('[nr]', str(nr)).replace('[number]', str(nr))
+         .replace('[nazwa]', name).replace('[name]', name).replace('[filename]', name))
     s = s.replace(os.sep, '_').replace('\0', '').strip()
     return s or name
 
@@ -526,13 +542,13 @@ class Grip(Gtk.Box):
             self.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.CENTER,
                                       vexpand=True))
             self.set_cursor_from_name('col-resize')
-            self.set_tooltip_text('Przeciągnij, aby zmienić szerokość panelu')
+            self.set_tooltip_text(_('Przeciągnij, aby zmienić szerokość panelu'))
         else:              # poziomy pasek -> zmiana wysokości
             self.set_size_request(-1, GRIP_W)
             self.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL, valign=Gtk.Align.CENTER,
                                       hexpand=True))
             self.set_cursor_from_name('row-resize')
-            self.set_tooltip_text('Przeciągnij, aby zmienić wysokość panelu (liczbę wierszy miniatur)')
+            self.set_tooltip_text(_('Przeciągnij, aby zmienić wysokość panelu (liczbę wierszy miniatur)'))
         g = Gtk.GestureDrag()
         g.set_button(1)
         g.connect('drag-begin', self.on_begin)
@@ -784,7 +800,7 @@ class CropArea(Gtk.DrawingArea):
             y = H / 2 - (30 + 20 * len(HINT)) / 2 + 16
             cr.set_source_rgb(1, 1, 1)
             cr.set_font_size(16)
-            center_text(cr, 'Otwórz obrazy, aby zacząć', W, y)
+            center_text(cr, _('Otwórz obrazy, aby zacząć'), W, y)
             cr.set_source_rgb(*DIM)
             cr.set_font_size(12)
             y += 12
@@ -1153,21 +1169,21 @@ class Win(Adw.ApplicationWindow):
         head = Adw.HeaderBar()
         self.wtitle = Adw.WindowTitle(title=APP_TITLE, subtitle='')
         head.set_title_widget(self.wtitle)
-        b = Gtk.Button(child=Adw.ButtonContent(icon_name='document-open-symbolic', label='Otwórz obrazy'),
+        b = Gtk.Button(child=Adw.ButtonContent(icon_name='document-open-symbolic', label=_('Otwórz obrazy')),
                        css_classes=['raised'],
                        tooltip_text='\n'.join(HINT))
         b.connect('clicked', self.open_files)
         head.pack_start(b)
 
         self.b_as = Gtk.Button(
-            child=Adw.ButtonContent(icon_name='document-save-as-symbolic', label='Zapisz jako'),
+            child=Adw.ButtonContent(icon_name='document-save-as-symbolic', label=_('Zapisz jako')),
             css_classes=['raised'],
-            tooltip_text='Zapisuje przycięte kopie wszystkich załadowanych obrazów jako nowe pliki.\n'
+            tooltip_text=_('Zapisuje przycięte kopie wszystkich załadowanych obrazów jako nowe pliki.\n'
                          'Nazwę (schemat) można zmienić w dialogu, domyślnie '
                          '[nazwa]_RRRRMMDD-GGMMSS[rozszerzenie].\n'
                          'Domyślnie obok oryginałów, w dialogu można wybrać inny folder.\n'
                          'Środkowy przycisk myszy: zapisuje od razu, bez dialogu — '
-                         'ostatnio użytym schematem nazwy, obok oryginałów.')
+                         'ostatnio użytym schematem nazwy, obok oryginałów.'))
         self.b_as.connect('clicked', self.ask_save_as)
         mg = Gtk.GestureClick()
         mg.set_button(2)
@@ -1176,14 +1192,14 @@ class Win(Adw.ApplicationWindow):
         head.pack_start(self.b_as)
 
         self.b_save = Gtk.Button(
-            label='Zastąp oryginalne',
+            label=_('Zastąp oryginalne'),
             css_classes=['suggested-action'],
-            tooltip_text='Zastępuje oryginalne pliki przyciętymi wersjami — dotyczy wszystkich '
+            tooltip_text=_('Zastępuje oryginalne pliki przyciętymi wersjami — dotyczy wszystkich '
                          'załadowanych obrazów (każdy wg swojego kadru).\n'
                          'Kopie oryginałów są zachowywane, więc można to cofnąć przyciskiem „Cofnij”.\n'
-                         'Formaty bez obsługi zapisu w systemie trafiają jako PNG obok oryginału.')
+                         'Formaty bez obsługi zapisu w systemie trafiają jako PNG obok oryginału.'))
         self.b_save.connect('clicked', self.ask_overwrite)
-        self.b_undo = Gtk.Button(child=Adw.ButtonContent(icon_name='edit-undo-symbolic', label='Cofnij'))
+        self.b_undo = Gtk.Button(child=Adw.ButtonContent(icon_name='edit-undo-symbolic', label=_('Cofnij')))
         self.b_undo.connect('clicked', self.undo)
 
         # przyciski na samym końcu headera: panel (najbardziej na prawo) i tryb indywidualny
@@ -1208,7 +1224,7 @@ class Win(Adw.ApplicationWindow):
         self.grid = Gtk.Grid(column_spacing=6, row_spacing=8)
         self.spins = {}
         self.fw = []
-        for k, t in (('x', 'X'), ('y', 'Y'), ('w', 'Szer.'), ('h', 'Wys.')):
+        for k, t in (('x', 'X'), ('y', 'Y'), ('w', _('Szer.')), ('h', _('Wys.'))):
             sp = Gtk.SpinButton.new_with_range(0, 0, 1)
             sp.set_width_chars(5)
             sp.connect('value-changed', self.on_spin, k)
@@ -1232,13 +1248,13 @@ class Win(Adw.ApplicationWindow):
 
         zb = Gtk.Box(css_classes=['linked'])
         self.z_out = Gtk.Button(icon_name='zoom-out-symbolic',
-                                tooltip_text='Oddal (scroll w dół nad obrazem, ↓, −)')
+                                tooltip_text=_('Oddal (scroll w dół nad obrazem, ↓, −)'))
         self.z_fit = Gtk.Button(label='—', width_request=56,
-                                tooltip_text='Dopasuj do okna\nScroll nad obrazem, ↑/↓, +/− — zoom\n'
+                                tooltip_text=_('Dopasuj do okna\nScroll nad obrazem, ↑/↓, +/− — zoom\n'
                                              'Prawy/środkowy przycisk myszy — przesuwanie\n'
-                                             '←/→ lub kółko myszy poza obrazem — poprzedni/następny obraz')
+                                             '←/→ lub kółko myszy poza obrazem — poprzedni/następny obraz'))
         self.z_in = Gtk.Button(icon_name='zoom-in-symbolic',
-                               tooltip_text='Przybliż (scroll w górę nad obrazem, ↑, +)')
+                               tooltip_text=_('Przybliż (scroll w górę nad obrazem, ↑, +)'))
         self.z_out.connect('clicked', lambda b: self.area.zoom_by(1 / ZOOM_STEP))
         self.z_in.connect('clicked', lambda b: self.area.zoom_by(ZOOM_STEP))
         self.z_fit.connect('clicked', lambda b: self.area.zoom_to(1.0))
@@ -1247,8 +1263,8 @@ class Win(Adw.ApplicationWindow):
 
         # poprzedni / następny obraz — same ikony, po prawej od przycisków zoomu
         nb = Gtk.Box(css_classes=['linked'])
-        self.b_prev = Gtk.Button(icon_name='go-previous-symbolic', tooltip_text='Poprzedni obraz (←)')
-        self.b_next = Gtk.Button(icon_name='go-next-symbolic', tooltip_text='Następny obraz (→)')
+        self.b_prev = Gtk.Button(icon_name='go-previous-symbolic', tooltip_text=_('Poprzedni obraz (←)'))
+        self.b_next = Gtk.Button(icon_name='go-next-symbolic', tooltip_text=_('Następny obraz (→)'))
         self.b_prev.connect('clicked', lambda b: self.step(-1))
         self.b_next.connect('clicked', lambda b: self.step(1))
         nb.append(self.b_prev)
@@ -1263,8 +1279,8 @@ class Win(Adw.ApplicationWindow):
             sec.append_item(it)
         menu.append_section(None, sec)
         sec2 = Gio.Menu()
-        sec2.append('Odwróć proporcje', 'win.flip')
-        sec2.append('Wyśrodkuj kadr', 'win.center')
+        sec2.append(_('Odwróć proporcje'), 'win.flip')
+        sec2.append(_('Wyśrodkuj kadr'), 'win.center')
         menu.append_section(None, sec2)
         a_ratio = Gio.SimpleAction.new('ratio', GLib.VariantType.new('s'))
         a_ratio.connect('activate', lambda a, p: self.ratio_apply(p.get_string()))
@@ -1277,10 +1293,10 @@ class Win(Adw.ApplicationWindow):
         self.add_action(self.act_center)
         rb = Gtk.Box(css_classes=['linked'])
         self.b_ratio = Gtk.MenuButton(child=Icon(draw_ratio_icon), menu_model=menu,
-                                      tooltip_text='Proporcje kadru\nOdwracanie proporcji i wyśrodkowanie kadru')
+                                      tooltip_text=_('Proporcje kadru\nOdwracanie proporcji i wyśrodkowanie kadru'))
         self.b_hundo = Gtk.Button(icon_name='edit-undo-symbolic',
-                                  tooltip_text='Cofnij zmianę kadru (Ctrl+Z)\nCtrl+Shift+Z — ponów\n'
-                                               'Działa też na kadr zmieniany myszą i polami liczbowymi.')
+                                  tooltip_text=_('Cofnij zmianę kadru (Ctrl+Z)\nCtrl+Shift+Z — ponów\n'
+                                                 'Działa też na kadr zmieniany myszą i polami liczbowymi.'))
         self.b_hundo.connect('clicked', self.hist_undo)
         rb.append(self.b_ratio)
         rb.append(self.b_hundo)
@@ -1312,11 +1328,11 @@ class Win(Adw.ApplicationWindow):
         self.count_box = Gtk.Grid(hexpand=True)
         self.count_box.attach(self.count, 0, 0, 1, 1)
         self.count_box.attach(self.count_sz, 0, 0, 1, 1)
-        self.b_desel = Gtk.Button(label='Odznacz', css_classes=['flat'], visible=False,
-                                  tooltip_text='Czyści zaznaczenie miniatur (Esc)')
+        self.b_desel = Gtk.Button(label=_('Odznacz'), css_classes=['flat'], visible=False,
+                                  tooltip_text=_('Czyści zaznaczenie miniatur (Esc)'))
         self.b_desel.connect('clicked', lambda b: self.set_selected(set()))
-        self.b_clear = Gtk.Button(label='Wyczyść', css_classes=['flat'],
-                                  tooltip_text='Usuwa wszystkie obrazy z listy (pliki na dysku zostają)')
+        self.b_clear = Gtk.Button(label=_('Wyczyść'), css_classes=['flat'],
+                                  tooltip_text=_('Usuwa wszystkie obrazy z listy (pliki na dysku zostają)'))
         self.b_clear.connect('clicked', self.clear_all)
         top = Gtk.Box(spacing=6)
         top.append(self.spinner)
@@ -1399,12 +1415,13 @@ class Win(Adw.ApplicationWindow):
     # --- trwałe toasty: „Wyczyszczono listę” (Przywróć) i „błędy” (Szczegóły) ---
     def build_sticky(self, kind):
         if kind == 'clear' and self.cleared:
-            t = Adw.Toast.new(f'Wyczyszczono listę obrazów ({len(self.cleared["paths"])})')
-            t.set_button_label('Przywróć')
+            t = Adw.Toast.new(_('Wyczyszczono listę obrazów ({count})').format(
+                count=len(self.cleared['paths'])))
+            t.set_button_label(_('Przywróć'))
             t.connect('button-clicked', lambda *_: self.restore_cleared())
         elif kind == 'errors' and self.errors:
             t = Adw.Toast.new(self.errors['msg'])
-            t.set_button_label('Szczegóły')
+            t.set_button_label(_('Szczegóły'))
             t.connect('button-clicked', lambda *_: self.errors_clicked())
         else:
             return None
@@ -1474,14 +1491,14 @@ class Win(Adw.ApplicationWindow):
         for it in e['errs']:
             p = it.get('path') or ''
             row = Adw.ActionRow()
-            row.set_title(GLib.markup_escape_text(os.path.basename(p) or 'Błąd ogólny'))
+            row.set_title(GLib.markup_escape_text(os.path.basename(p) or _('Błąd ogólny')))
             sub = it['why'] + (f'\n{short(os.path.dirname(p))}' if p else '')
             row.set_subtitle(GLib.markup_escape_text(sub))
             row.set_subtitle_selectable(True)
             lst.append(row)
         sc = Gtk.ScrolledWindow(child=lst, propagate_natural_height=True, max_content_height=340,
                                 hscrollbar_policy=Gtk.PolicyType.NEVER, overlay_scrolling=True)
-        b_close = Gtk.Button(label='Zamknij', css_classes=['suggested-action'])
+        b_close = Gtk.Button(label=_('Zamknij'), css_classes=['suggested-action'])
         b_close.connect('clicked', lambda b: d.close())
         btns = Gtk.Box(spacing=12, homogeneous=True)
         if e.get('outs'):
@@ -1851,7 +1868,7 @@ class Win(Adw.ApplicationWindow):
         self.dirty = st['dirty'] and self.has_crops()
         self.ready = True
         if missing:
-            self.toast(f'Nie znaleziono plików z poprzedniej sesji: {missing}')
+            self.toast(_('Nie znaleziono plików z poprzedniej sesji: {count}').format(count=missing))
         # lista wyczyszczona w poprzedniej sesji: przycisk „Przywróć” wraca, o ile nic nowego nie otwarto
         if not st['images'] and st['cleared'] and not self.thumbs and not self.queue:
             self.cleared = st['cleared']
@@ -2097,10 +2114,11 @@ class Win(Adw.ApplicationWindow):
         has = self.cur is not None and self.area.pix is not None and not self.saving
         key = self.ckey()
         self.b_hundo.set_sensitive(bool(self.hist.get(key)) and not self.saving)
-        self.b_hundo.set_tooltip_text(
-            ('Cofnij zmianę kadru ogólnego' if key == 0 else f'Cofnij zmianę kadru indywidualnego #{key}')
-            + ' (Ctrl+Z)\nCtrl+Shift+Z — ponów\nKażdy kadr (ogólny i każdy #N) ma własną historię.\n'
-              'Działa też na kadr zmieniany myszą i polami liczbowymi.')
+        action = (_('Cofnij zmianę kadru ogólnego') if key == 0
+                  else _('Cofnij zmianę kadru indywidualnego #{key}').format(key=key))
+        self.b_hundo.set_tooltip_text(action + _(' (Ctrl+Z)\nCtrl+Shift+Z — ponów\n'
+                                                 'Każdy kadr (ogólny i każdy #N) ma własną historię.\n'
+                                                 'Działa też na kadr zmieniany myszą i polami liczbowymi.'))
         self.b_ratio.set_sensitive(has)
         self.act_flip.set_enabled(has and bool(self.area.sel))
         self.act_center.set_enabled(has and bool(self.area.sel))
@@ -2127,15 +2145,15 @@ class Win(Adw.ApplicationWindow):
     def ask_close_pop(self, btn):
         pop = Gtk.Popover(autohide=True, has_arrow=True, position=Gtk.PositionType.BOTTOM)
         pop.set_parent(btn)
-        head_l = Gtk.Label(label='Zamknąć bez zapisania kadru?', css_classes=['heading'], xalign=0, wrap=True,
+        head_l = Gtk.Label(label=_('Zamknąć bez zapisania kadru?'), css_classes=['heading'], xalign=0, wrap=True,
                            max_width_chars=32)
-        body_l = dim('Kadr nie został zapisany w żadnym obrazie. Przy następnym uruchomieniu wróci '
-                     'razem z listą obrazów, a pliki na dysku zostaną bez zmian.')
+        body_l = dim(_('Kadr nie został zapisany w żadnym obrazie. Przy następnym uruchomieniu wróci '
+                     'razem z listą obrazów, a pliki na dysku zostaną bez zmian.'))
         body_l.set_wrap(True)
         body_l.set_xalign(0)
         body_l.set_max_width_chars(32)
-        b_back = Gtk.Button(label='Wróć')
-        b_close = Gtk.Button(label='Zamknij', css_classes=['destructive-action'])
+        b_back = Gtk.Button(label=_('Wróć'))
+        b_close = Gtk.Button(label=_('Zamknij'), css_classes=['destructive-action'])
         btns = Gtk.Box(spacing=8, homogeneous=True, margin_top=4)
         btns.append(b_back)
         btns.append(b_close)
@@ -2173,7 +2191,7 @@ class Win(Adw.ApplicationWindow):
 
     def on_close(self, *_):
         if self.saving:
-            self.toast('Trwa zapisywanie — zamknij okno, gdy się skończy')
+            self.toast(_('Trwa zapisywanie — zamknij okno, gdy się skończy'))
             return True
         if self.force_close or not self.is_dirty():
             self.persist()
@@ -2183,11 +2201,11 @@ class Win(Adw.ApplicationWindow):
         btn = self.close_button_under_pointer()
         if btn is not None:
             return self.ask_close_pop(btn)      # kliknięto ✕ — pytanie w dymku przy nim
-        d = Adw.AlertDialog(heading='Zamknąć bez zapisania kadru?',
-                            body='Kadr nie został zapisany w żadnym obrazie. Przy następnym uruchomieniu '
-                                 'wróci razem z listą obrazów, a pliki na dysku zostaną bez zmian.')
-        d.add_response('cancel', 'Wróć')
-        d.add_response('close', 'Zamknij')
+        d = Adw.AlertDialog(heading=_('Zamknąć bez zapisania kadru?'),
+                            body=_('Kadr nie został zapisany w żadnym obrazie. Przy następnym uruchomieniu '
+                                 'wróci razem z listą obrazów, a pliki na dysku zostaną bez zmian.'))
+        d.add_response('cancel', _('Wróć'))
+        d.add_response('close', _('Zamknij'))
         d.set_response_appearance('close', Adw.ResponseAppearance.DESTRUCTIVE)
         d.set_default_response('cancel')
         d.set_close_response('cancel')
@@ -2349,11 +2367,12 @@ class Win(Adw.ApplicationWindow):
         m = self.undo_m
         self.b_undo.set_sensitive(bool(m))
         if m:
-            self.b_undo.set_tooltip_text(
-                f'Cofa ostatnie „Zastąp oryginalne”: przywraca oryginalne pliki ({len(m["items"])}) '
-                'i kadry z tamtego momentu.\nDziała też po ponownym uruchomieniu programu.')
+            self.b_undo.set_tooltip_text(_('Cofa ostatnie „Zastąp oryginalne”: przywraca oryginalne pliki '
+                                           '({count}) i kadry z tamtego momentu.\n'
+                                           'Działa też po ponownym uruchomieniu programu.').format(
+                                               count=len(m['items'])))
         else:
-            self.b_undo.set_tooltip_text('Nic do cofnięcia — cofanie działa po użyciu „Zastąp oryginalne”.')
+            self.b_undo.set_tooltip_text(_('Nic do cofnięcia — cofanie działa po użyciu „Zastąp oryginalne”.'))
 
     def upd_indiv(self):
         ts = self.targets()
@@ -2371,30 +2390,36 @@ class Win(Adw.ApplicationWindow):
         else:
             self.ind_n.remove_css_class('green')
         if not ts:
-            tip = 'Tryb indywidualny — najpierw dodaj obrazy.'
+            tip = _('Tryb indywidualny — najpierw dodaj obrazy.')
         elif multi and active:
-            tip = f'Wyłącz tryb indywidualny dla zaznaczonych obrazów ({len(ts)}) — wrócą do kadru ogólnego.'
+            tip = _('Wyłącz tryb indywidualny dla zaznaczonych obrazów ({count}) — wrócą do kadru ogólnego.').format(
+                count=len(ts))
         elif multi:
-            tip = f'Nadaj zaznaczonym obrazom ({len(ts)}) wspólny, osobny kadr (nowy #N).'
+            tip = _('Nadaj zaznaczonym obrazom ({count}) wspólny, osobny kadr (nowy #N).').format(
+                count=len(ts))
         elif active:
-            tip = f'Wyłącz tryb indywidualny (#{ts[0].group}) — obraz wróci do kadru ogólnego.'
+            tip = _('Wyłącz tryb indywidualny (#{group}) — obraz wróci do kadru ogólnego.').format(
+                group=ts[0].group)
         elif len(self.selected) >= 2:
-            tip = ('Tryb indywidualny: osobny kadr tylko dla tego obrazu.\n'
-                   'Ten obraz nie należy do zaznaczenia, więc dotyczy tylko jego — zaznaczenie zostaje bez zmian.')
+            tip = _('Tryb indywidualny: osobny kadr tylko dla tego obrazu.\n'
+                    'Ten obraz nie należy do zaznaczenia, więc dotyczy tylko jego — zaznaczenie zostaje bez zmian.')
         else:
-            tip = ('Tryb indywidualny: osobny kadr tylko dla tego obrazu.\n'
-                   'Zaznacz kilka miniatur (Ctrl/Shift+klik), żeby nadać im wspólny osobny kadr.')
+            tip = _('Tryb indywidualny: osobny kadr tylko dla tego obrazu.\n'
+                    'Zaznacz kilka miniatur (Ctrl/Shift+klik), żeby nadać im wspólny osobny kadr.')
         self.b_ind.set_tooltip_text(tip)
 
     def upd_count(self):
         """Pasek nad miniaturami: liczba obrazów, zaznaczenie, postęp ładowania i podpowiedź nawigacji."""
         n, k = len(self.thumbs), len(self.selected)
         if self.loading:
-            txt = f'Ładowanie obrazów: {self.load_done}/{self.load_total}…'
+            txt = _('Ładowanie obrazów: {done}/{total}…').format(
+                done=self.load_done, total=self.load_total)
             if k:
-                txt += f' · zaznaczone: {k}'
+                txt += _(' · zaznaczone: {count}').format(count=k)
         else:
-            txt = f'Obrazy: {n}' + (f' · zaznaczone: {k}' if k else '')
+            txt = _('Obrazy: {count}').format(count=n)
+            if k:
+                txt += _(' · zaznaczone: {count}').format(count=k)
             if n > 1:
                 if self.mode == 'side':
                     txt += ' · ' + NAV_HINT[0].upper() + NAV_HINT[1:]
@@ -2402,7 +2427,8 @@ class Win(Adw.ApplicationWindow):
                     txt += ' · ' + NAV_HINT
         self.count.set_text(txt)
         big = str(len(self.thumbs) + len(self.queue))
-        self.count_sz.set_text(f'Obrazy: {big} · zaznaczone: {big} · {NAV_HINT[0].upper() + NAV_HINT[1:]}')
+        self.count_sz.set_text(_('Obrazy: {count} · zaznaczone: {count} · {nav}').format(
+            count=big, nav=NAV_HINT[0].upper() + NAV_HINT[1:]))
 
     def upd_title(self):
         cur, n = self.cur, len(self.thumbs)
@@ -2410,22 +2436,26 @@ class Win(Adw.ApplicationWindow):
         if cur:
             parts.append(f'{cur.name} ({self.thumbs.index(cur) + 1}/{n})')
         if self.loading:
-            parts.append(f'ładowanie {self.load_done}/{self.load_total}')
+            parts.append(_('ładowanie {done}/{total}').format(
+                done=self.load_done, total=self.load_total))
         p = self.save_prog
         if p:
             if p['phase'] == 'thumbs':
-                parts.append(f'odświeżanie miniatur {p["k"]}/{p["total"]}')
+                parts.append(_('odświeżanie miniatur {done}/{total}').format(
+                    done=p['k'], total=p['total']))
             else:
-                parts.append(f'zapisywanie {p["k"]}/{p["total"]}')
+                parts.append(_('zapisywanie {done}/{total}').format(
+                    done=p['k'], total=p['total']))
         self.wtitle.set_subtitle(' · '.join(parts))
 
     def upd_loading(self):
         """Lekka aktualizacja wskaźników ładowania (wywoływana po każdym załadowanym obrazie)."""
         a = self.area
         if self.loading:
-            status = f'Ładowanie obrazów… {self.load_done}/{self.load_total}'
+            status = _('Ładowanie obrazów… {done}/{total}').format(
+                done=self.load_done, total=self.load_total)
         elif self.restoring:
-            status = 'Przywracanie sesji…'
+            status = _('Przywracanie sesji…')
         else:
             status = None
         if a.pix is not None:
@@ -2442,13 +2472,13 @@ class Win(Adw.ApplicationWindow):
     # --- dodawanie obrazów: przycisk, drop, schowek ---
     def open_files(self, *_):
         f = Gtk.FileFilter()
-        f.set_name('Obrazy')
+        f.set_name(_('Obrazy'))
         for fm in FORMATS:
             for m in fm.get_mime_types():
                 f.add_mime_type(m)
         st = Gio.ListStore.new(Gtk.FileFilter)
         st.append(f)
-        d = Gtk.FileDialog(title='Wybierz obrazy', filters=st, default_filter=f)
+        d = Gtk.FileDialog(title=_('Wybierz obrazy'), filters=st, default_filter=f)
         d.open_multiple(self, None, self.on_files)
 
     def on_files(self, d, res):
@@ -2476,35 +2506,35 @@ class Win(Adw.ApplicationWindow):
         elif fm.contain_gtype(Gdk.Texture.__gtype__):
             cb.read_texture_async(None, self.on_paste_tex)
         else:
-            self.toast('W schowku nie ma obrazów ani plików')
+            self.toast(_('W schowku nie ma obrazów ani plików'))
 
     def on_paste_files(self, cb, res):
         try:
             v = cb.read_value_finish(res)
             paths = [f.get_path() for f in v.get_files() if f.get_path()]
         except Exception:
-            return self.toast('Nie można wkleić ze schowka')
+            return self.toast(_('Nie można wkleić ze schowka'))
         if paths:
             self.add_files(paths)
         else:
-            self.toast('W schowku nie ma plików lokalnych')
+            self.toast(_('W schowku nie ma plików lokalnych'))
 
     def on_paste_tex(self, cb, res):
         try:
             tex = cb.read_texture_finish(res)
             os.makedirs(PASTE_DIR, exist_ok=True)
-            path = unique(os.path.join(PASTE_DIR, 'wklejony_' + datetime.now().strftime('%Y%m%d-%H%M%S') + '.png'))
+            path = unique(os.path.join(PASTE_DIR, _('wklejony_') + datetime.now().strftime('%Y%m%d-%H%M%S') + '.png'))
             if not tex.save_to_png(path):
-                raise GLib.Error('zapis nieudany')
+                raise GLib.Error(_('zapis nieudany'))
         except (GLib.Error, OSError, AttributeError):
-            return self.toast('Nie można wkleić obrazu ze schowka')
+            return self.toast(_('Nie można wkleić obrazu ze schowka'))
         self.add_files([path])
 
     # --- ładowanie obrazów po jednym, w tle ---
     def add_files(self, paths, first=None, groups=None, front=False):
         """Kolejkuje obrazy do załadowania (duplikaty po ścieżce są pomijane). Ładują się po jednym."""
         if self.saving:
-            return self.toast('Trwa zapisywanie — dodaj obrazy, gdy się skończy')
+            return self.toast(_('Trwa zapisywanie — dodaj obrazy, gdy się skończy'))
         have = {t.path for t in self.thumbs} | set(self.queue)
         new = []
         for p in dict.fromkeys(paths):
@@ -2578,9 +2608,9 @@ class Win(Adw.ApplicationWindow):
     def report_load(self):
         msgs = []
         if self.load_bad:
-            msgs.append('Nie można otworzyć: ' + ', '.join(self.load_bad[:3]) + ('…' if len(self.load_bad) > 3 else ''))
+            msgs.append(_('Nie można otworzyć: ') + ', '.join(self.load_bad[:3]) + ('…' if len(self.load_bad) > 3 else ''))
         if self.load_dup:
-            msgs.append(f'Pominięto duplikaty: {self.load_dup}')
+            msgs.append(_('Pominięto duplikaty: {count}').format(count=self.load_dup))
         self.load_bad, self.load_dup = [], 0
         if msgs:
             self.toast(' · '.join(msgs))
@@ -2632,7 +2662,7 @@ class Win(Adw.ApplicationWindow):
         t.add_controller(mg)
         ov = Gtk.Overlay(child=t)
         x = Gtk.Button(icon_name='window-close-symbolic', halign=Gtk.Align.END, valign=Gtk.Align.START,
-                       tooltip_text='Usuń z listy', css_classes=['circular', 'osd'], visible=False)
+                       tooltip_text=_('Usuń z listy'), css_classes=['circular', 'osd'], visible=False)
         x.connect('clicked', lambda b: self.drop(t))
         ov.add_overlay(x)
         t.cell, t.xbtn = ov, x
@@ -2685,7 +2715,7 @@ class Win(Adw.ApplicationWindow):
         try:
             pix = load(t.path)
         except GLib.Error:
-            return self.toast(f'Nie można otworzyć: {os.path.basename(t.path)}')
+            return self.toast(_('Nie można otworzyć: ') + os.path.basename(t.path))
         self.cur = t
         self.anchor = t
         self.area.set_pix(pix)
@@ -2728,13 +2758,13 @@ class Win(Adw.ApplicationWindow):
     def info_text(self, t):
         iw, ih = t.dims
         c = self.crop_of(t)
-        txt = f'Obraz: {iw}×{ih} px'
+        txt = _('Obraz: {width}×{height} px').format(width=iw, height=ih)
         if t.group:
-            txt += f' · kadr indywidualny #{t.group}'
+            txt += _(' · kadr indywidualny #{group}').format(group=t.group)
         if c and self.ratio(t):
-            txt += ' · kadr przeskalowany pod ten obraz'
+            txt += _(' · kadr przeskalowany pod ten obraz')
         if c and (c[0] >= iw or c[1] >= ih):
-            txt += ' · kadr poza obrazem'
+            txt += _(' · kadr poza obrazem')
         return txt
 
     def sync(self):
@@ -2777,7 +2807,8 @@ class Win(Adw.ApplicationWindow):
             t.current = t is cur
             t.selected = t in self.selected
             t.queue_draw()
-            tip = t.name + '\nŚrodkowy przycisk myszy — pokaż w menedżerze plików' + ('\n% — kadr przeskalowany pod ten obraz'
+            tip = t.name + '\n' + _('Środkowy przycisk myszy — pokaż w menedżerze plików') + (
+                '\n% — ' + _('kadr przeskalowany pod ten obraz')
                             if self.raw_of(t) and self.ratio(t) else '')
             if tip != t.tip:
                 t.tip = tip
@@ -2794,7 +2825,9 @@ class Win(Adw.ApplicationWindow):
     def reveal_label(self, paths, saved=False):
         """Etykieta przycisku: przy kilku folderach mówi, ile okien menedżera plików się otworzy."""
         n = len({os.path.dirname(p) for p in paths})
-        return ('Pokaż zapisane ' if saved else 'Pokaż ') + ('w folderze' if n <= 1 else f'w folderach ({n} {okna(n)})')
+        label = _('Pokaż zapisane') if saved else _('Pokaż')
+        return label + (' ' + _('w folderze') if n <= 1 else
+                        ' ' + _('w folderach ({count})').format(count=n))
 
     def reveal_files(self, paths):
         """Jedno okno menedżera plików na folder. Jeśli menedżer to potrafi, zaznacza w nim wszystkie
@@ -2805,7 +2838,7 @@ class Win(Adw.ApplicationWindow):
             if os.path.exists(p):
                 groups.setdefault(os.path.dirname(p), []).append(p)
         if not groups:
-            return self.toast('Zapisane pliki już nie istnieją')
+            return self.toast(_('Zapisane pliki już nie istnieją'))
         every = fm_selects_all()
 
         def fallback(folder):
@@ -2831,8 +2864,8 @@ class Win(Adw.ApplicationWindow):
                      'org.freedesktop.FileManager1', 'ShowItems', GLib.Variant('(ass)', (uris, '')),
                      None, Gio.DBusCallFlags.NONE, -1, None, done)
         if not every and any(len(v) > 1 for v in groups.values()):
-            self.toast('Ten menedżer plików potrafi zaznaczyć w oknie tylko jeden plik — '
-                       'zaznaczono pierwszy z zapisanych.', timeout=6)
+            self.toast(_('Ten menedżer plików potrafi zaznaczyć w oknie tylko jeden plik — '
+                         'zaznaczono pierwszy z zapisanych.'), timeout=6)
 
     # --- polecenia: opis zmian dla każdego obrazu (do skopiowania) ---
     def commands_text(self, scheme, now, dest):
@@ -2850,11 +2883,12 @@ class Win(Adw.ApplicationWindow):
             name, _fmt = out_name(t.path, scheme, now, i)
             out = unique(os.path.join(dest or save_dir(t.path), name))
             n += 1
-            note = '; kadr przeskalowany pod ten obraz' if self.ratio(t) else ''
-            lines.append(f'{n}. Przytnij: {t.path}')
-            lines.append(f'   Kadr: x={x}, y={y}, szerokość={w}, wysokość={h} px '
-                         f'(od lewego górnego rogu; obraz ma {iw}×{ih} px{note})')
-            lines.append(f'   Zapisz jako: {out}')
+            note = '; ' + _('kadr przeskalowany pod ten obraz') if self.ratio(t) else ''
+            lines.append(_('{number}. Przytnij: {path}').format(number=n, path=t.path))
+            lines.append(_('   Kadr: x={x}, y={y}, szerokość={width}, wysokość={height} px '
+                           '(od lewego górnego rogu; obraz ma {image_width}×{image_height} px{note})').format(
+                               x=x, y=y, width=w, height=h, image_width=iw, image_height=ih, note=note))
+            lines.append(_('   Zapisz jako: {path}').format(path=out))
             lines.append('')
         return '\n'.join(lines).strip()
 
@@ -2866,20 +2900,20 @@ class Win(Adw.ApplicationWindow):
 
     def ask_overwrite(self, _):
         nc = sum(1 for t in self.thumbs if self.crop_of(t))
-        d = Adw.AlertDialog(heading='Zastąpić oryginalne?',
-                            body=f'Obrazy z kadrem ({nc}) zostaną zastąpione przyciętymi wersjami — każdy wg '
-                                 'swojego kadru. Kopie oryginałów zostaną zachowane, '
-                                 'więc możesz to cofnąć przyciskiem „Cofnij”.')
+        d = Adw.AlertDialog(heading=_('Zastąpić oryginalne?'),
+                            body=_('Obrazy z kadrem ({count}) zostaną zastąpione przyciętymi wersjami — '
+                                   'każdy wg swojego kadru. Kopie oryginałów zostaną zachowane, '
+                                   'więc możesz to cofnąć przyciskiem „Cofnij”.').format(count=nc))
         fb = [t for t in self.thumbs if self.crop_of(t)
               and not WRITABLE.get(os.path.splitext(t.path)[1].lower().lstrip('.'))]
         if fb:
             exts = ', '.join(sorted({os.path.splitext(t.path)[1].lower() or '(brak)' for t in fb}))
-            d.set_body(d.get_body() + f'\n\nUwaga: dla {len(fb)} z tych obrazów system nie obsługuje zapisu '
-                       f'w ich formacie ({exts}). Nie da się ich zastąpić — kadr zapisze się jako nowy '
-                       'plik PNG obok oryginału, a oryginał zostanie bez zmian. '
-                       '„Cofnij” usunie ten nowy plik.')
-        d.add_response('no', 'Anuluj')
-        d.add_response('yes', 'Zastąp')
+            d.set_body(d.get_body() + _('\n\nUwaga: dla {count} z tych obrazów system nie obsługuje zapisu '
+                                        'w ich formacie ({formats}). Nie da się ich zastąpić — kadr zapisze '
+                                        'się jako nowy plik PNG obok oryginału, a oryginał zostanie bez zmian. '
+                                        '„Cofnij” usunie ten nowy plik.').format(count=len(fb), formats=exts))
+        d.add_response('no', _('Anuluj'))
+        d.add_response('yes', _('Zastąp'))
         d.set_response_appearance('yes', Adw.ResponseAppearance.DESTRUCTIVE)
         d.set_default_response('no')
         d.set_close_response('no')
@@ -2894,23 +2928,23 @@ class Win(Adw.ApplicationWindow):
         st = {'scheme': self.scheme}
         self.dest = None
 
-        d = Adw.Dialog(title='Zapisz jako', follows_content_size=True)
+        d = Adw.Dialog(title=_('Zapisz jako'), follows_content_size=True)
         lst = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=['boxed-list'], width_request=460)
 
-        r_dir = Adw.ActionRow(title='Folder zapisu')
-        b_reset = Gtk.Button(label='Obok oryginałów', valign=Gtk.Align.CENTER, css_classes=['flat'])
-        b_pick = Gtk.Button(label='Wybierz…', valign=Gtk.Align.CENTER)
+        r_dir = Adw.ActionRow(title=_('Folder zapisu'))
+        b_reset = Gtk.Button(label=_('Obok oryginałów'), valign=Gtk.Align.CENTER, css_classes=['flat'])
+        b_pick = Gtk.Button(label=_('Wybierz…'), valign=Gtk.Align.CENTER)
         r_dir.add_suffix(b_reset)
         r_dir.add_suffix(b_pick)
 
-        r_scheme = Adw.ActionRow(title='Schemat nazwy')
-        b_edit = Gtk.Button(label='Edytuj', valign=Gtk.Align.CENTER)
+        r_scheme = Adw.ActionRow(title=_('Schemat nazwy'))
+        b_edit = Gtk.Button(label=_('Edytuj'), valign=Gtk.Align.CENTER)
         r_scheme.add_suffix(b_edit)
 
-        r_edit = Adw.EntryRow(title='Schemat (bez rozszerzenia)', visible=False)
-        r_edit.set_text(st['scheme'])
+        r_edit = Adw.EntryRow(title=_('Schemat (bez rozszerzenia)'), visible=False)
+        r_edit.set_text(st['scheme'].replace('[nazwa]', _('[nazwa]')).replace('[nr]', _('[nr]')))
 
-        r_tok = Adw.ActionRow(title='Wstaw', visible=False)
+        r_tok = Adw.ActionRow(title=_('Wstaw'), visible=False)
         tb = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
 
         def insert(tok):
@@ -2919,25 +2953,26 @@ class Win(Adw.ApplicationWindow):
             r_edit.grab_focus()
             r_edit.set_position(pos + len(tok))
 
-        for label, tok in (('Nazwa', '[nazwa]'), ('Nr', '[nr]'), ('Data', '%Y%m%d'), ('Godz.', '%H%M%S')):
-            tbtn = Gtk.Button(label=label, tooltip_text=f'Wstaw {tok}')
+        for label, tok in (( _('Nazwa'), _('[nazwa]')), (_('Nr'), _('[nr]')),
+                           (_('Data'), '%Y%m%d'), (_('Godz.'), '%H%M%S')):
+            tbtn = Gtk.Button(label=label, tooltip_text=_('Wstaw {token}').format(token=tok))
             tbtn.connect('clicked', lambda b, t=tok: insert(t))
             tb.append(tbtn)
-        b_def = Gtk.Button(label='Domyślny', css_classes=['flat'], tooltip_text=DEFAULT_SCHEME)
+        b_def = Gtk.Button(label=_('Domyślny'), css_classes=['flat'], tooltip_text=DEFAULT_SCHEME)
         b_def.connect('clicked', lambda b: r_edit.set_text(DEFAULT_SCHEME))
         tb.append(b_def)
         r_tok.add_suffix(tb)
 
-        r_prev = Adw.ActionRow(title='Podgląd nazwy')
+        r_prev = Adw.ActionRow(title=_('Podgląd nazwy'))
         r_prev.set_subtitle_selectable(True)
 
         # kopiowanie poleceń: sama płaska ikona w prawym górnym rogu (na wierzchu), opis tylko w podpowiedzi
         copy_icon = Icon(draw_copy_icon)
         b_copy = Gtk.Button(css_classes=['flat', 'circular'], child=copy_icon, halign=Gtk.Align.END,
                             valign=Gtk.Align.START, margin_top=8, margin_end=8,
-                            tooltip_text='Kopiuj polecenia dla obrazów\n'
-                                         'Do schowka trafia lista: co przyciąć, jakim kadrem i do jakiej '
-                                         'nazwy — osobno dla każdego obrazu.')
+                            tooltip_text=_('Kopiuj polecenia dla obrazów\n'
+                                           'Do schowka trafia lista: co przyciąć, jakim kadrem i do jakiej '
+                                           'nazwy — osobno dla każdego obrazu.'))
         b_copy.set_sensitive(bool(self.commands_text(st['scheme'], now, None)))
 
         for r in (r_dir, r_scheme, r_edit, r_tok, r_prev):
@@ -2956,18 +2991,20 @@ class Win(Adw.ApplicationWindow):
             scheme = st['scheme']
             name, _fmt = out_name(ex, scheme, now, 1)
             folder = self.dest or save_dir(ex)
-            default = 'Obok oryginałów — każdy plik w swoim folderze'
+            default = _('Obok oryginałów — każdy plik w swoim folderze')
             if has_paste:
-                default += '\n(obrazy wklejone ze schowka trafią do folderu Obrazy)'
+                default += _('\n(obrazy wklejone ze schowka trafią do folderu Obrazy)')
             r_dir.set_subtitle(GLib.markup_escape_text(short(self.dest)) if self.dest else default)
             b_reset.set_sensitive(bool(self.dest))
             r_scheme.set_subtitle(
-                f'<span foreground="#487cdf" weight="bold">{GLib.markup_escape_text(scheme)}</span>[rozszerzenie]')
+                f'<span foreground="#487cdf" weight="bold">{GLib.markup_escape_text(scheme)}</span>'
+                + _('[rozszerzenie]'))
             # podgląd: 1. linia — sama nazwa, 2. — folder, 3. — informacja o pozostałych obrazach
             r_prev.set_subtitle(
                 GLib.markup_escape_text(name) + '\n'
                 + GLib.markup_escape_text(short(folder)) + '\n'
-                + GLib.markup_escape_text(f'Tak samo zapiszą się wszystkie obrazy z kadrem ({n}).'))
+                + GLib.markup_escape_text(_('Tak samo zapiszą się wszystkie obrazy z kadrem ({count}).').format(
+                    count=n)))
 
         def picked(fd, res):
             try:
@@ -2978,7 +3015,7 @@ class Win(Adw.ApplicationWindow):
             refresh()
 
         def pick(_):
-            fd = Gtk.FileDialog(title='Folder zapisu')
+            fd = Gtk.FileDialog(title=_('Folder zapisu'))
             fd.set_initial_folder(Gio.File.new_for_path(self.dest or save_dir(ex)))
             fd.select_folder(self, None, picked)
 
@@ -2991,7 +3028,7 @@ class Win(Adw.ApplicationWindow):
             r_edit.set_visible(on)
             r_tok.set_visible(on)
             hint.set_visible(on)
-            b_edit.set_label('Gotowe' if on else 'Edytuj')
+            b_edit.set_label(_('Gotowe') if on else _('Edytuj'))
             if on:
                 r_edit.grab_focus()
                 r_edit.set_position(-1)
@@ -3028,11 +3065,11 @@ class Win(Adw.ApplicationWindow):
             self.persist_soon()
             self.save(False, now, self.dest)
 
-        head_l = Gtk.Label(label='Zapisz jako', css_classes=['title-2'], wrap=True)
-        body_l = Gtk.Label(label='Przycięte kopie zostaną zapisane jako nowe pliki. Oryginały się nie zmienią.',
+        head_l = Gtk.Label(label=_('Zapisz jako'), css_classes=['title-2'], wrap=True)
+        body_l = Gtk.Label(label=_('Przycięte kopie zostaną zapisane jako nowe pliki. Oryginały się nie zmienią.'),
                            wrap=True, justify=Gtk.Justification.CENTER, max_width_chars=50)
-        b_cancel = Gtk.Button(label='Anuluj')
-        b_ok = Gtk.Button(label='Zapisz', css_classes=['suggested-action'])
+        b_cancel = Gtk.Button(label=_('Anuluj'))
+        b_ok = Gtk.Button(label=_('Zapisz'), css_classes=['suggested-action'])
         b_cancel.connect('clicked', lambda b: d.close())
 
         def ok(_):
@@ -3068,7 +3105,7 @@ class Win(Adw.ApplicationWindow):
             else:
                 skip += 1
         if not items:
-            return self.toast('Żaden obraz nie ma kadru')
+            return self.toast(_('Żaden obraz nie ma kadru'))
         job = {'overwrite': overwrite, 'scheme': '[nazwa]' if overwrite else self.scheme, 'now': now,
                'dest': dest, 'items': items, 'skip': skip,
                'general': list(self.general) if self.general else None,
@@ -3130,11 +3167,11 @@ class Win(Adw.ApplicationWindow):
         thumbs = p['phase'] == 'thumbs'
         k, total = p['k'], p['total']
         if thumbs:
-            self.sv_title.set_text('Odświeżanie miniatur…')
-            self.sv_bar.set_text(f'Miniatura {k} z {total}')
+            self.sv_title.set_text(_('Odświeżanie miniatur…'))
+            self.sv_bar.set_text(_('Miniatura {current} z {total}').format(current=k, total=total))
         else:
-            self.sv_title.set_text('Zastępowanie oryginałów…' if p['overwrite'] else 'Zapisywanie obrazów…')
-            self.sv_bar.set_text(f'Obraz {k} z {total}')
+            self.sv_title.set_text(_('Zastępowanie oryginałów…') if p['overwrite'] else _('Zapisywanie obrazów…'))
+            self.sv_bar.set_text(_('Obraz {current} z {total}').format(current=k, total=total))
         frac = ((k if thumbs else max(k - 1, 0)) / total) if total else 1.0
         self.sv_bar.set_fraction(min(1.0, max(0.0, frac)))
         self.sv_file.set_text(p['name'])
@@ -3153,7 +3190,7 @@ class Win(Adw.ApplicationWindow):
         try:
             self.save_run(job, res)
         except Exception as e:      # nieprzewidziany błąd nie może zostawić okna w trybie „zapisywania”
-            res['errors'].append({'path': '', 'why': f'Nieoczekiwany błąd: {err_text(e)}'})
+            res['errors'].append({'path': '', 'why': _('Nieoczekiwany błąd: ') + err_text(e)})
         GLib.idle_add(self.save_finished, job, res)
 
     def save_run(self, job, res):
@@ -3163,32 +3200,34 @@ class Win(Adw.ApplicationWindow):
             try:
                 os.makedirs(UNDO_DIR, exist_ok=True)
             except OSError as e:
-                res['abort'] = f'Nie można utworzyć kopii zapasowej ({err_text(e)}) — nic nie zmieniono'
+                res['abort'] = _('Nie można utworzyć kopii zapasowej ({reason}) — nic nie zmieniono').format(
+                    reason=err_text(e))
                 return
         total = len(job['items'])
         for k, it in enumerate(job['items'], 1):
             p = it['path']
             GLib.idle_add(self.save_step, k, total, os.path.basename(p))
             x, y, w, h = it['crop']
-            backup, out, stage = None, None, 'odczyt obrazu'
+            backup, out, stage = None, None, _('odczyt obrazu')
             try:
                 pix = load(p)
                 pw, ph = pix.get_width(), pix.get_height()
                 if x >= pw or y >= ph:
-                    res['errors'].append({'path': p, 'why': f'kadr leży poza obrazem ({pw}×{ph} px)'})
+                    res['errors'].append({'path': p, 'why': _('kadr leży poza obrazem ({width}×{height} px)').format(
+                        width=pw, height=ph)})
                     continue
                 sub = pix.new_subpixbuf(x, y, min(w, pw - x), min(h, ph - y))
                 name, fmt = out_name(p, scheme, now, it['nr'])
                 out = os.path.join(dest or save_dir(p), name)
                 if overwrite and out == p:
                     # kopia oryginału przed nadpisaniem — bez niej nic nie nadpisujemy
-                    stage = 'kopia zapasowa oryginału'
+                    stage = _('kopia zapasowa oryginału')
                     backup = os.path.join(UNDO_DIR, f'{len(res["items"])}.bak')
                     shutil.copy2(p, backup)
                 else:
                     # kopia nigdy nie nadpisuje istniejącego pliku (w tym oryginału)
                     out = unique(out)
-                stage = 'zapis pliku'
+                stage = _('zapis pliku')
                 opts = (['quality'], ['95']) if fmt == 'jpeg' else ([], [])
                 try:
                     sub.savev(out, fmt, *opts)
@@ -3282,11 +3321,15 @@ class Win(Adw.ApplicationWindow):
 
     def report_save(self, job, res):
         done, errs, outs, skip = res['done'], res['errors'], res['outs'], job['skip']
-        msg = f'Zapisano: {done}' + (f', błędy: {len(errs)}' if errs else '') + (f', bez kadru: {skip}' if skip else '')
+        msg = _('Zapisano: {done}{errors}{skipped}').format(
+            done=done,
+            errors=_(', błędy: {count}').format(count=len(errs)) if errs else '',
+            skipped=_(', bez kadru: {count}').format(count=skip) if skip else '')
         if errs:
             # toast z błędami zostaje do otwarcia nowych obrazów; „Szczegóły” pokazują, co i dlaczego zawiodło
-            self.errors = {'title': 'Błędy zapisu', 'msg': msg, 'errs': errs, 'outs': outs,
-                           'intro': f'Zapisano: {done}. Tych obrazów nie udało się przyciąć i zapisać:'}
+            self.errors = {'title': _('Błędy zapisu'), 'msg': msg, 'errs': errs, 'outs': outs,
+                           'intro': _('Zapisano: {done}. Tych obrazów nie udało się przyciąć i zapisać:').format(
+                               done=done)}
             self.show_sticky('errors')
         elif outs:
             self.toast(msg, self.reveal_label(outs), lambda: self.reveal_files(outs), 10)
@@ -3334,11 +3377,13 @@ class Win(Adw.ApplicationWindow):
             self.show(self.cur)
         else:
             self.sync()
-        msg = f'Przywrócono: {ok}' + (f', błędy: {len(errs)}' if errs else '')
+        msg = _('Przywrócono: {count}{errors}').format(
+            count=ok, errors=_(', błędy: {count}').format(count=len(errs)) if errs else '')
         if errs:
-            self.errors = {'title': 'Błędy przywracania', 'msg': msg, 'errs': errs, 'outs': [],
-                           'intro': f'Przywrócono: {ok}. Tych plików nie udało się przywrócić '
-                                    '(kopie zapasowe zostają — można spróbować ponownie):'}
+            self.errors = {'title': _('Błędy przywracania'), 'msg': msg, 'errs': errs, 'outs': [],
+                           'intro': _('Przywrócono: {count}. Tych plików nie udało się przywrócić '
+                                      '(kopie zapasowe zostają — można spróbować ponownie):').format(
+                                          count=ok)}
             self.show_sticky('errors')
         else:
             self.toast(msg)

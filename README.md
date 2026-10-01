@@ -4,6 +4,8 @@
 
 Kadr to aplikacja GTK4/libadwaita do kadrowania wielu obrazów. Zaznaczony obszar kadru można zastosować do wszystkich obrazów albo ustawić osobny kadr dla wybranych plików.
 
+Interfejs jest dostępny po polsku i angielsku; język wybierany jest na podstawie ustawień systemu.
+
 ## Funkcje
 
 - Kadrowanie wielu obrazów tym samym obszarem i kadrowanie indywidualne.

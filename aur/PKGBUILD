@@ -3,7 +3,7 @@
 # Single-file GTK4/libadwaita application: one crop for multiple images.
 # No build step — install files directly from the v$pkgver tag.
 pkgname=kadr
-pkgver=1.0.0
+pkgver=1.2.0
 pkgrel=1
 pkgdesc='Batch crop multiple images with the same crop area (GTK4/libadwaita)'
 arch=('x86_64')
@@ -36,4 +36,6 @@ package() {
   install -Dm644 local.Kadr.desktop "$pkgdir/usr/share/applications/local.Kadr.desktop"
   install -Dm644 local.Kadr.svg \
     "$pkgdir/usr/share/icons/hicolor/scalable/apps/local.Kadr.svg"
+  install -Dm644 locale/en/LC_MESSAGES/kadr.mo \
+    "$pkgdir/usr/share/locale/en/LC_MESSAGES/kadr.mo"
 }

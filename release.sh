@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # kadr — wydanie: buduje tarball źródłowy z taga i publikuje (GitHub asset + AUR).
 #
-# Jedyne źródło prawdy jest DRZEWO ROBOCZE repo: kadr, local.Kadr.desktop, local.Kadr.svg.
+# Jedyne źródło prawdy jest DRZEWO ROBOCZE repo: aplikacja, desktop, ikona i katalog tłumaczeń.
 # Ten skrypt jest jedynym miejscem, które zamienia te pliki w to, co widzi użytkownik:
 #
 #   pliki w repo ──git archive──> dist/kadr-$v.tar.gz ──gh release upload──> asset v$v
@@ -23,8 +23,8 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO"
 
 PKG=kadr
-# jedyne trzy pliki, które trafiają do paczki — lista jest tu, żeby nie rozjechała się z package()
-FILES=(kadr local.Kadr.desktop local.Kadr.svg)
+# jedyne pliki, które trafiają do paczki — lista jest tu, żeby nie rozjechała się z package()
+FILES=(kadr local.Kadr.desktop local.Kadr.svg locale/en/LC_MESSAGES/kadr.mo)
 
 DRY=0
 if [ "${1:-}" = "--dry-run" ]; then DRY=1; shift; fi
