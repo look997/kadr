@@ -10,6 +10,8 @@ poza tym, co i tak ma każdy GNOME.
 
 ![ten sam kadr idzie do wszystkich obrazów](demo.gif)
 
+![kadr — dialog „Zapisz jako”](screenshot-dialog.png)
+
 ## Co potrafi
 
 - **Jeden kadr dla całej listy.** Zaznaczasz ramkę raz — dostaje ją każdy wczytany obraz.
