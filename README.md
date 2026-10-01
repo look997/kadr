@@ -16,10 +16,10 @@ poza tym, co i tak ma każdy GNOME.
 
 - **Jeden kadr dla całej listy.** Zaznaczasz ramkę raz — dostaje ją każdy wczytany obraz.
 - **Kadr indywidualny (`#N`).** Wybrane obrazy dostają wspólny, ale osobny kadr; reszta zostaje na ogólnym.
-- **Zaznaczenie to nie filtr.** Ctrl/Shift+klik zaznacza miniatury, ale nie wyłącza ich z listy:
-  `←`/`→`, kółko nad panelem i zwykły klik przeglądają obrazy tak samo jak bez zaznaczenia, a *Zapisz
-  jako* i *Zastąp oryginalne* i tak obejmują wszystkie wczytane pliki. Zaznaczenie ma jedno zadanie —
-  nadać wybranym wspólny kadr `#N` — i znika przez `Esc` albo *Odznacz*.
+- **Zaznaczenie nie przeszkadza w przeglądaniu.** Ctrl/Shift+klik zbiera miniatury pod wspólny kadr
+  `#N`, ale `←`/`→`, kółko nad panelem i zwykły klik po miniaturach działają normalnie i **nie gubią
+  zaznaczenia** — zmienia je tylko Ctrl/Shift, a czyści `Esc` albo *Odznacz*. Sam zapis i tak
+  obejmuje wszystkie wczytane obrazy.
 - **Skalowanie pod obraz.** Obrazy o tych samych proporcjach co wzorzec dostają proporcjonalnie
   przeskalowany kadr (plakietka `%` na miniaturze) — np. seria zdjęć z aparatu w dwóch rozmiarach.
 - **Zapis jako kopie albo w miejscu.** „Zapisz jako” zapisuje przycięte kopie obok oryginałów
@@ -93,7 +93,7 @@ kadr ~/Obrazy            # cały folder
 | prawy / środkowy przycisk na obrazie | przesuwanie powiększonego obrazu |
 | środkowy przycisk na miniaturze | pokaż plik w menedżerze plików |
 | środkowy przycisk na *Zapisz jako* | szybki zapis bez dialogu |
-| `Ctrl`/`Shift` + klik miniaturą | zaznaczanie wielu obrazów (do kadrów `#N`), bez wpływu na przeglądanie i zapis |
+| `Ctrl`/`Shift` + klik miniaturą | dodawanie/usuwanie z zaznaczenia wielu obrazów (do kadrów `#N`) — sama nawigacja zaznaczenia nie kasuje |
 
 ### Pliki programu
 
