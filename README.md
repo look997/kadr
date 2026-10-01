@@ -105,16 +105,16 @@ kadr ~/Obrazy            # cały folder
 ## Rozwój
 
 ```bash
-./install-local.sh              # dowiązanie ~/.local/bin/kadr do repo — dopisujesz i uruchamiasz
-./install-local.sh --restart    # to samo + zamknięcie starej instancji i start nowej
-./install-local.sh --copy       # instalacja jak zwykły program: kopia pliku, desktop, ikona
-./install-local.sh --package    # buduje prawdziwą paczkę i wypisuje jej zawartość
+./install-local.sh            # kopiuje program do ~/.local/bin + desktop i ikonę (bez sudo)
+./install-local.sh --restart  # to samo + zamknięcie starej instancji i start nowej
+./install-local.sh --remove   # usuwa instalację lokalną, zostaje tylko wersja z AUR (/usr/bin)
+./install-local.sh --package  # buduje paczkę i podaje komendę instalacji
 ```
 
-Pętla jest krótka: poprawiasz `kadr`, `./install-local.sh --restart`, gotowe. Składnia sprawdzana
-jest przed startem, a uruchamiany jest dokładnie ten plik, który edytujesz. Tryb domyślny to
-dowiązanie, więc po zmianie nie ma czego „instalować"; `--copy` służy do sprawdzenia, czy program
-działa jako zwykły plik, a `--package` do testu tego, co trafi do AUR.
+Źródło jest w repo, żywa kopia w `~/.local` — po zmianie w `kadr` przerzucasz ją jednym
+poleceniem (`--restart` robi to i od razu startuje nową instancję), a składnia sprawdzana jest
+przed kopiowaniem. Paczki z AUR nigdy nie instalujesz u siebie lokalnie — `~/.local/bin` ma
+i tak pierwszeństwo w `PATH`; `--remove` służy tylko do sprzątania.
 
 ## Budowanie pakietu AUR
 

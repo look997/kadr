@@ -1,12 +1,18 @@
 # lokalne pozostałości po instalacji i budowie AUR
 pkg/
 src/
+dist/
+dev-material/
 *.pkg.tar.zst
 *.sig
+*.tar.gz
 
 # python
 __pycache__/
 *.py[cod]
+
+# generowane lokalnie (aur/.SRCINFO jest śledzone)
+/.SRCINFO
 
 # edytory
 *~
