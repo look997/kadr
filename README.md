@@ -16,10 +16,9 @@ poza tym, co i tak ma każdy GNOME.
 
 - **Jeden kadr dla całej listy.** Zaznaczasz ramkę raz — dostaje ją każdy wczytany obraz.
 - **Kadr indywidualny (`#N`).** Wybrane obrazy dostają wspólny, ale osobny kadr; reszta zostaje na ogólnym.
-- **Zaznaczenie nie przeszkadza w przeglądaniu.** Ctrl/Shift+klik zbiera miniatury pod wspólny kadr
-  `#N`, ale `←`/`→`, kółko nad panelem i zwykły klik po miniaturach działają normalnie i **nie gubią
-  zaznaczenia** — zmienia je tylko Ctrl/Shift, a czyści `Esc` albo *Odznacz*. Sam zapis i tak
-  obejmuje wszystkie wczytane obrazy.
+- **Zaznaczenie nie przeszkadza w przeglądaniu.** Ctrl/Shift+klik zaznacza miniatury, ale `←`/`→`,
+  kółko nad panelem i zwykły klik po miniaturach działają normalnie i **nie gubią zaznaczenia** —
+  zmienia je tylko Ctrl/Shift, a czyści `Esc` albo *Odznacz*.
 - **Skalowanie pod obraz.** Obrazy o tych samych proporcjach co wzorzec dostają proporcjonalnie
   przeskalowany kadr (plakietka `%` na miniaturze) — np. seria zdjęć z aparatu w dwóch rozmiarach.
 - **Zapis jako kopie albo w miejscu.** „Zapisz jako” zapisuje przycięte kopie obok oryginałów

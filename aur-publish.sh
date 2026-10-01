@@ -3,9 +3,9 @@
 #
 # Wymaga:
 #   1) konta na https://aur.archlinux.org,
-#   2) klucza SSH dodanego w Account Settings -> SSH Public Keys,
-#   3) utworzonego pakietu (pkgbase) o nazwie "kadr":
-#      https://aur.archlinux.org/pkgbase/add/
+#   2) klucza SSH dodanego w Account Settings -> SSH Public Keys.
+# Pakiety nie trzeba zakładać przez WWW — repozytorium ${PKG}.git powstaje
+# przy pierwszym pushu (klon daje "puste repozytorium").
 #
 # Użycie:  ./aur-publish.sh
 set -euo pipefail
@@ -16,11 +16,11 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 echo "-> klonuję  ${PKG}.git"
-git clone "aur.archlinux.org:${PKG}.git" "$WORK/$PKG"
-cp "$SRC/PKGBUILD" "$SRC/.SRCINFO" "$WORK/$PKG/"
+git -c init.defaultBranch=master clone "ssh://aur@aur.archlinux.org/${PKG}.git" "$WORK/$PKG"
+cp "$SRC/PKGBUILD" "$SRC/.SRCINFO" "$SRC/LICENSE" "$WORK/$PKG/"
 
 cd "$WORK/$PKG"
-git add PKGBUILD .SRCINFO
+git add PKGBUILD .SRCINFO LICENSE
 if git diff --cached --quiet; then
   echo "-> bez zmian w stosunku do AUR, nie ma czego wysyłać"
   exit 0
