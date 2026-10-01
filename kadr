@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""Kadr batch image cropper.
+
+Polski: Kadruj wiele obrazów wspólnym lub indywidualnym kadrem.
+English: Crop multiple images with a shared or individual crop area.
+"""
 import os, re, sys, json, math, shutil, subprocess, threading, functools, time
 from datetime import datetime
 import gi

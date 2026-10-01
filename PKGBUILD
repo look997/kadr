@@ -1,11 +1,11 @@
 # Maintainer: look997 <look997@gmail.com>
 #
-# Jednoplikowa aplikacja GTK4/libadwaita: jeden kadr dla wielu obrazów.
-# Bez etapów budowania — instalujemy pliki wprost z tagu v$pkgver.
+# Single-file GTK4/libadwaita application: one crop for multiple images.
+# No build step — install files directly from the v$pkgver tag.
 pkgname=kadr
 pkgver=1.0.0
 pkgrel=1
-pkgdesc='Kadrowanie zbiorcze — ten sam kadr dla wielu obrazów naraz (GTK4/libadwaita)'
+pkgdesc='Batch crop multiple images with the same crop area (GTK4/libadwaita)'
 arch=('x86_64')
 url='https://github.com/look997/kadr'
 license=('MIT')
@@ -16,18 +16,17 @@ depends=(
   python-cairo
   python-gobject
 )
-# Moduły gdk-pixbuf decydują o tym, które formaty da się otworzyć i zapisać.
-# Bez nich działa PNG/JPEG (i wszystko, co jest w cache'u), reszta nie.
+# Gdk-pixbuf modules determine which image formats can be opened and saved.
+# Without them, PNG/JPEG (and cached formats) are supported.
 optdepends=(
   'libheif: HEIF/AVIF'
   'librsvg: SVG'
   'libtiff: TIFF'
   'libwebp: WebP'
-  # oryginalne okna menedżera plików do przycisków „Pokaż w folderze”
-  'nemo: pokazywanie zapisanych plików z zaznaczeniem (org.freedesktop.FileManager1 ShowItems)'
+  'nemo: show saved files selected in the file manager (org.freedesktop.FileManager1 ShowItems)'
 )
-# Źródłem jest release asset v$pkgver, a NIE snapshot repo z taga — snapshot ciągnie
-# screenshoty i demo.gif (1,2 MB) tylko po to, żeby zainstalować 56 kB.
+# Use the v$pkgver release asset rather than the full tag snapshot, which includes
+# screenshots and demo.gif (1.2 MB) to install a 56 kB application.
 source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/kadr-$pkgver.tar.gz")
 sha256sums=('f774e5f08941266955e360a8f78404a46f7983ecc480cc224c5d021dd7389e68')
 
