@@ -28,7 +28,7 @@ optdepends=(
 # Use the v$pkgver release asset rather than the full tag snapshot, which includes
 # screenshots and demo.gif (1.2 MB) to install a 56 kB application.
 source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/kadr-$pkgver.tar.gz")
-sha256sums=('f774e5f08941266955e360a8f78404a46f7983ecc480cc224c5d021dd7389e68')
+sha256sums=('8f55ca12847cf97fdebbf4263ea589e1a982b3a63f437427bab8dbf7d481eb82')
 
 package() {
   cd "$pkgname-$pkgver"

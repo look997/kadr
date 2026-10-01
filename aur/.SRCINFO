@@ -16,6 +16,6 @@ pkgbase = kadr
 	optdepends = libwebp: WebP
 	optdepends = nemo: show saved files selected in the file manager (org.freedesktop.FileManager1 ShowItems)
 	source = kadr-1.2.0.tar.gz::https://github.com/look997/kadr/releases/download/v1.2.0/kadr-1.2.0.tar.gz
-	sha256sums = f774e5f08941266955e360a8f78404a46f7983ecc480cc224c5d021dd7389e68
+	sha256sums = 8f55ca12847cf97fdebbf4263ea589e1a982b3a63f437427bab8dbf7d481eb82
 
 pkgname = kadr
