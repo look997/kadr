@@ -16,6 +16,7 @@ The full interface is available in English and Polish. The language follows your
 ## Browser demo
 
 [Open the experimental HTML demo](https://look997.github.io/kadr/kadr.html). This is a separate work-in-progress version; it may contain bugs and is not a replacement for the desktop application.
+The demo follows your browser language; override it with `?lang=en` or `?lang=pl`.
 
 ## Installation
 

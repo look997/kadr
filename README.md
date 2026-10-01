@@ -16,6 +16,7 @@ Interfejs jest dostępny po polsku i angielsku; język wybierany jest na podstaw
 ## Demo w przeglądarce
 
 [Otwórz eksperymentalne demo HTML](https://look997.github.io/kadr/kadr.html). To osobna, robocza wersja — może zawierać błędy i nie zastępuje aplikacji desktopowej.
+Język interfejsu demo jest dobierany według języka przeglądarki; można go wymusić przez `?lang=en` lub `?lang=pl`.
 
 ## Instalacja
 
