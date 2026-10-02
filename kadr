@@ -3398,11 +3398,11 @@ class Win(Adw.ApplicationWindow):
 
 class App(Adw.Application):
     def __init__(self):
-        super().__init__(application_id='org.kadr.kadr', flags=Gio.ApplicationFlags.HANDLES_OPEN)
+        super().__init__(application_id='io.github.look997.kadr', flags=Gio.ApplicationFlags.HANDLES_OPEN)
 
     def do_startup(self):
         Adw.Application.do_startup(self)
-        Gtk.Window.set_default_icon_name('org.kadr.kadr')
+        Gtk.Window.set_default_icon_name('io.github.look997.kadr')
         try:
             # suwaki nakładkowe (cienkie, nie zabierają miejsca) — niezależnie od ustawień systemu
             Gtk.Settings.get_default().set_property('gtk-overlay-scrolling', True)

@@ -29,7 +29,7 @@ Interfejs jest dostępny po polsku i angielsku; język zależy od ustawień syst
 ## Demo w przeglądarce
 
 [Otwórz eksperymentalne demo HTML](https://look997.github.io/kadr/kadr.html). To osobna, robocza wersja, może zawierać błędy i nie zastępuje aplikacji desktopowej.
-Język demo zależy od języka przeglądarki; można go wymusić przez `?lang=en` lub `?lang=pl`. Demo można zainstalować jako PWA i uruchamiać offline po pierwszym wczytaniu.
+Język demo zależy od języka przeglądarki; można go wymusić przez `?lang=en` lub `?lang=pl`. Demo można zainstalować jako PWA i uruchamiać offline po pierwszym wczytaniu. Metadane kadrów i sesji są przechowywane w przeglądarce; po odświeżeniu wybierz te same obrazy, aby je przywrócić. Przeglądarka nie otworzy ponownie plików lokalnych bez Twojej zgody.
 
 ## Instalacja
 
@@ -47,9 +47,9 @@ yay -S kadr
 git clone https://github.com/look997/kadr.git
 cd kadr
 sudo install -Dm755 kadr /usr/bin/kadr
-sudo install -Dm644 org.kadr.kadr.desktop /usr/share/applications/org.kadr.kadr.desktop
-sudo install -Dm644 org.kadr.kadr.svg /usr/share/icons/hicolor/scalable/apps/org.kadr.kadr.svg
-sudo install -Dm644 org.kadr.kadr.metainfo.xml /usr/share/metainfo/org.kadr.kadr.metainfo.xml
+sudo install -Dm644 io.github.look997.kadr.desktop /usr/share/applications/io.github.look997.kadr.desktop
+sudo install -Dm644 io.github.look997.kadr.svg /usr/share/icons/hicolor/scalable/apps/io.github.look997.kadr.svg
+sudo install -Dm644 io.github.look997.kadr.metainfo.xml /usr/share/metainfo/io.github.look997.kadr.metainfo.xml
 ```
 
 Bez uprawnień roota skopiuj `kadr` do `~/bin/` albo `~/.local/bin/` i dodaj ten katalog do `PATH`.
@@ -63,17 +63,19 @@ Po zainstalowaniu zależności uruchom `./kadr`. Do codziennych lokalnych testó
 
 ### Flatpak
 
-Szablon manifestu Flatpaka znajduje się w [`flatpak/org.kadr.kadr.yml.in`](flatpak/org.kadr.kadr.yml.in). Używa identyfikatora `org.kadr.kadr` i środowiska GNOME, więc GTK4 i libadwaita pochodzą ze wspólnego runtime'u, a nie z prywatnego zestawu bibliotek. `./release.sh <wersja>` wstawia dokładny adres i sumę archiwum wydania, tworząc gotowy manifest `dist/org.kadr.kadr.yml`.
+Identyfikator aplikacji Flatpak to `io.github.look997.kadr`. GTK4 i libadwaita pochodzą ze wspólnego runtime'u GNOME, a nie z prywatnego zestawu bibliotek. Flathub wymaga, aby manifest zgłoszenia przygotował opiekun projektu; nie używaj manifestu wygenerowanego przez AI.
 
 Po utworzeniu wydania zbuduj i zainstaluj je lokalnie (wymagane Flatpak, `flatpak-builder` oraz GNOME 51 SDK/runtime):
 
 ```sh
 flatpak install --user flathub org.gnome.Platform//51 org.gnome.Sdk//51
-flatpak-builder --user --install --force-clean build-dir dist/org.kadr.kadr.yml
-flatpak run org.kadr.kadr
+flatpak-builder --user --install --force-clean build-dir io.github.look997.kadr.yml
+flatpak run io.github.look997.kadr
 ```
 
-Sandbox używa portali GTK do wyboru plików i nie żąda szerokiego dostępu do systemu plików hosta. Wygenerowany manifest jest przypięty do deterministycznego archiwum `dist/kadr-<wersja>.tar.gz`; skrypt wydania wysyła oba pliki jako assety GitHub Release. Zbuduj i przetestuj manifest, a następnie skorzystaj z aktualnej procedury zgłaszania nowej aplikacji przez Flathub. Po akceptacji repozytorium aplikacji będzie się nazywać `flathub/org.kadr.kadr`; każde kolejne wydanie wymaga zgłoszenia zaktualizowanego, przypiętego manifestu do tego repozytorium. Flathub weryfikuje ID aplikacji i manifest w ramach zgłoszenia.
+Sandbox używa portali GTK do wyboru plików i nie żąda szerokiego dostępu do systemu plików hosta.
+
+Przygotuj własny manifest Flathub przypięty do deterministycznego archiwum z GitHub Release, zbuduj go i przetestuj, a potem skorzystaj z aktualnej procedury zgłaszania nowej aplikacji. Po akceptacji repozytorium aplikacji będzie się nazywać `flathub/io.github.look997.kadr`; kolejne aktualizacje zgłasza się do tego repozytorium.
 
 ## Użycie
 
@@ -114,7 +116,7 @@ kadr ~/Obrazy           # otwórz folder
 | `~/.cache/kadr/undo/` | kopie oryginałów używane przez *Cofnij* |
 | `~/.cache/kadr/pasted/` | obrazy wklejone ze schowka (usuwane po 7 dniach) |
 
-Flatpak zapisuje te same dane w `~/.var/app/org.kadr.kadr/config/kadr/` oraz `~/.var/app/org.kadr.kadr/cache/kadr/`.
+Flatpak zapisuje te same dane w `~/.var/app/io.github.look997.kadr/config/kadr/` oraz `~/.var/app/io.github.look997.kadr/cache/kadr/`.
 
 ## Rozwój
 
@@ -137,16 +139,16 @@ makepkg -si
 
 ### Wydanie nowej wersji
 
-Pliki źródłowe aplikacji to `kadr`, `org.kadr.kadr.desktop`, `org.kadr.kadr.svg` i `org.kadr.kadr.metainfo.xml`. Przed każdym wydaniem zaktualizuj wpis wersji w metadanych AppStream i zwiększ nazwę cache service workera w `sw.js`, aby zaktualizować zainstalowane wersje demo w przeglądarce. Jedynym edytowanym przepisem pakietu jest główny [`PKGBUILD`](PKGBUILD); `.SRCINFO` powstaje podczas wydania i jest kopiowane do AUR. Archiwum źródłowe jest odtwarzalne z wypchniętego taga.
+Pliki źródłowe aplikacji to `kadr`, `io.github.look997.kadr.desktop`, `io.github.look997.kadr.svg` i `io.github.look997.kadr.metainfo.xml`. Przed każdym wydaniem zaktualizuj wpis wersji w metadanych AppStream i zwiększ nazwę cache service workera w `sw.js`, aby zaktualizować zainstalowane wersje demo w przeglądarce. Jedynym edytowanym przepisem pakietu jest główny [`PKGBUILD`](PKGBUILD); `.SRCINFO` powstaje podczas wydania i jest kopiowane do AUR. Archiwum źródłowe jest odtwarzalne z wypchniętego taga.
 
 ```sh
-git add -A && git commit -m 'release: prepare 1.2.1'
-git tag v1.2.1 && git push origin main --tags
-./release.sh 1.2.1              # odtwarzalne archiwum -> GitHub Release + AUR
-./release.sh --dry-run 1.2.1    # generuje i sprawdza artefakty bez publikowania
+git add -A && git commit -m 'release: prepare 1.2.2'
+git tag v1.2.2 && git push origin main --tags
+./release.sh 1.2.2              # odtwarzalne archiwum -> GitHub Release + AUR
+./release.sh --dry-run 1.2.2    # generuje i sprawdza artefakty bez publikowania
 ```
 
-Skrypt wydania odmawia pracy na brudnym drzewie, wymaga taga wypchniętego na GitHub i sprawdza, czy asset na GitHubie zgadza się z `sha256` w `PKGBUILD`. Tworzy release GitHub, jeśli jeszcze nie istnieje, publikuje pakiet AUR i wysyła przypięty manifest Flatpaka jako asset wydania; ten manifest trzeba osobno zgłosić do Flathub. Nigdy nie wywołuje `sudo`.
+Skrypt wydania odmawia pracy na brudnym drzewie, wymaga taga wypchniętego na GitHub i sprawdza, czy asset na GitHubie zgadza się z `sha256` w `PKGBUILD`. Tworzy release GitHub, jeśli jeszcze nie istnieje, i publikuje pakiet AUR. Nigdy nie wywołuje `sudo`.
 
 ## Uwagi
 

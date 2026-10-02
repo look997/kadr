@@ -27,7 +27,7 @@
       "purpose": "any"
     },
     {
-      "src": "./org.kadr.kadr.svg",
+      "src": "./io.github.look997.kadr.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

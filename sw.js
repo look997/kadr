@@ -1,8 +1,8 @@
-const CACHE = 'kadr-demo-v5';
+const CACHE = 'kadr-demo-v6';
 const FILES = [
   './kadr.html',
   './manifest.webmanifest',
-  './org.kadr.kadr.svg',
+  './io.github.look997.kadr.svg',
   './pwa-icon-192.png',
   './pwa-icon-512.png'
 ];

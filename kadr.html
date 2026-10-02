@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#1f1f1e"><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./org.kadr.kadr.svg" type="image/svg+xml"><title>Kadrowanie zbiorcze</title><meta name="description" lang="pl" content="Eksperymentalne demo kadrowania wielu obrazów tym samym kadrem."><meta name="description" lang="en" content="Experimental demo for cropping multiple images with the same crop area.">
+<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#1f1f1e"><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./io.github.look997.kadr.svg" type="image/svg+xml"><title>Kadrowanie zbiorcze</title><meta name="description" lang="pl" content="Eksperymentalne demo kadrowania wielu obrazów tym samym kadrem."><meta name="description" lang="en" content="Experimental demo for cropping multiple images with the same crop area.">
 <style>
 :root{--bg:#1f1f1e;--dim:#a7a7a7;--ac:#487cdf;--gr:#3ec46d;--sw:300px;--rows:1;color-scheme:dark}
 *{box-sizing:border-box}html,body{height:100%;margin:0;background:var(--bg);color:#fff;font:14px/1.4 Cantarell,"Adwaita Sans",system-ui,sans-serif;overflow:hidden;user-select:none}
@@ -62,6 +62,8 @@ const EN=langParam!==null?/^en(?:-|$)/i.test(langParam):/^en(?:-|$)/i.test(prefe
 const UI=new Map([
 ['Kadrowanie zbiorcze','Batch Image Cropper'],
 ['Eksperymentalne demo kadrowania wielu obrazów tym samym kadrem.','Experimental demo for cropping multiple images with the same crop area.'],
+['Wybierz ponownie te same obrazy, aby przywrócić kadry.','Select the same images again to restore their crops.'],
+['Przywrócono kadry z poprzedniej sesji.','Restored crops from the previous session.'],
 ['[nazwa]','[name]'],['[nr]','[number]'],['[rozszerzenie]','[extension]'],
 ['1:1 — kwadrat','1:1 — square'],['Jak obraz','Match image'],
 ['Otwórz obrazy, aby zacząć','Open images to get started'],['Otwórz obrazy','Open images'],['Zapisz jako…','Save As…'],['Zapisz jako','Save As'],
@@ -190,9 +192,9 @@ const I=p=>`<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="
 const IC={open:I('<path d="M2 4h4l1.5 1.5H14V13H2z"/>'),sas:I('<path d="M3 2.5h8l2.5 2.5v8.5h-10.5z"/><path d="M5.5 2.5v3h4v-3M5.5 13.5v-4h5v4"/>'),undo:I('<path d="M5.5 3 2.5 6l3 3"/><path d="M2.5 6H10a3.5 3.5 0 0 1 0 7H6"/>'),zi:I('<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14M5 7h4M7 5v4"/>'),zo:I('<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14M5 7h4"/>'),pv:I('<path d="M10 3 5 8l5 5"/>'),nx:I('<path d="M6 3l5 5-5 5"/>'),x:I('<path d="M4 4l8 8M12 4l-8 8"/>'),
 rt:I('<rect x="1.7" y="3.2" width="12.6" height="9.6"/><path d="M4.2 7.4V5.6h2M11.8 8.6v1.8h-2"/>'),cr:a=>I(`<path style="color:${a?GRN:'inherit'}" stroke="${a?GRN:'currentColor'}" d="M4.5 1.5v10h10M1.5 4.5h10v10"/>`),
 pl:m=>I(`<rect x="1.7" y="2.7" width="12.6" height="10.6" ${m=='hidden'?'stroke-dasharray="2.2 2.2"':''}/>`+(m=='bottom'?'<rect x="2.4" y="9" width="11.2" height="3.6" fill="currentColor"/>':m=='side'?'<rect x="9.4" y="3.4" width="4.2" height="9.2" fill="currentColor"/>':'')),cp:I('<path d="M5.5 5.5v-4h9v9h-4"/><rect x="1.5" y="5.5" width="9" height="9"/><path d="M3.7 8.3 5.5 10l-1.8 1.7M6.5 12h1.8"/>'),ok:I('<path stroke="'+GRN+'" d="M2.5 8.5l3.8 3.8 7.2-8.6"/>')};
-const S={items:[],cur:null,sel:new Set,anchor:null,general:null,groups:{},refs:{},hist:{},redo:{},htag:null,ht:0,drag:false,dirty:false,mode:'bottom',rows:1,sideW:300,scheme:DEF,cleared:null,undoM:null,saving:false,prog:null,q:[],running:false,ld:0,lt:0,dest:null,lock:false,maxd:[1e5,1e5],bad:[],dup:0};
-try{const p=JSON.parse(localStorage.kadr);for(const k of['rows','sideW','scheme'])if(p[k]!=null)S[k]=p[k];if(PM.includes(p.mode))S.mode=p.mode}catch{}
-const persist=()=>{try{localStorage.kadr=JSON.stringify({mode:S.mode,rows:S.rows,sideW:S.sideW,scheme:S.scheme})}catch{}};
+const S={items:[],cur:null,sel:new Set,anchor:null,general:null,groups:{},refs:{},hist:{},redo:{},htag:null,ht:0,drag:false,dirty:false,mode:'bottom',rows:1,sideW:300,scheme:DEF,cleared:null,undoM:null,saving:false,prog:null,q:[],running:false,ld:0,lt:0,dest:null,lock:false,maxd:[1e5,1e5],bad:[],dup:0,saved:null,restoreAsked:false};
+try{const p=JSON.parse(localStorage.kadr);for(const k of['rows','sideW','scheme'])if(p[k]!=null)S[k]=p[k];if(PM.includes(p.mode))S.mode=p.mode;if(p.session?.version===1&&Array.isArray(p.session.items))S.saved=p.session}catch{}
+const persist=()=>{try{const session=S.items.length?{version:1,general:S.general,groups:S.groups,refs:S.refs,items:S.items.map(t=>({key:t.key,group:t.group})),current:S.cur?.key||null,dirty:S.dirty}:S.saved;localStorage.kadr=JSON.stringify({mode:S.mode,rows:S.rows,sideW:S.sideW,scheme:S.scheme,session})}catch{}};
 $('#ic')||document.head.append(Object.assign(E('link'),{id:'ic',rel:'icon',href:'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><rect x="6" y="6" width="116" height="116" rx="28" fill="#1f1f1e" stroke="#3a3a39" stroke-width="3"/><rect x="44" y="44" width="44" height="44" fill="#487cdf" fill-opacity=".3"/><path d="M44 24V88H104" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 44H88V104" fill="none" stroke="#487cdf" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/></svg>')}));
 // ---- kadr: wzorce, grupy ----
 const rawOf=t=>t.group?S.groups[t.group]:S.general;
@@ -297,11 +299,15 @@ addEventListener('paste',e=>{if(e.target.matches('input'))return;const fs=[...(e
 const stamp=()=>fmt('%Y%m%d-%H%M%S',new Date);
 function forgetCleared(){S.cleared=null}
 function addFiles(l){if(S.saving||!l.length)return;forgetCleared();S.q.push(...l);S.lt+=l.length;if(!S.running)runLoad();sync()}
+function restoreSession(){const p=S.saved;if(!p)return false;const entries=p.items.filter(x=>x&&typeof x.key=='string');if(!entries.length||!entries.every(x=>S.items.some(t=>t.key===x.key))){if(!S.restoreAsked&&entries.some(x=>S.items.some(t=>t.key===x.key))){toast('Wybierz ponownie te same obrazy, aby przywrócić kadry.');S.restoreAsked=true}return false}
+S.general=Array.isArray(p.general)?p.general:null;S.groups=p.groups&&typeof p.groups=='object'?p.groups:{};S.refs=p.refs&&typeof p.refs=='object'?p.refs:{};
+for(const x of entries){const t=S.items.find(i=>i.key===x.key);t.group=x.group&&S.groups[x.group]?x.group:null}
+S.dirty=!!p.dirty;S.cur=S.items.find(t=>t.key===p.current)||S.items[0];S.saved=null;S.restoreAsked=false;if(S.cur)A.setPix(S.cur.bm);toast('Przywrócono kadry z poprzedniej sesji.');sync();return true}
 async function runLoad(){S.running=true;sync();while(S.q.length){const{f,h}=S.q.shift(),key=[f.name,f.size,f.lastModified].join('|');S.ld++;
 if(S.items.some(t=>t.key==key)){S.dup++;loadUi();continue}
 try{const bm=await createImageBitmap(f),k=CELL/Math.max(bm.width,bm.height),tw=Math.max(1,Math.round(bm.width*k)),th=Math.max(1,Math.round(bm.height*k)),tb=E('canvas');tb.width=tw;tb.height=th;const c=tb.getContext('2d');c.imageSmoothingQuality='high';c.drawImage(bm,0,0,tw,th);
 addThumb({key,name:f.name,file:f,fh:h,bm,w:bm.width,h:bm.height,tb,group:null});if(!S.cur)show(S.items.at(-1))}catch{S.bad.push(f.name)}loadUi()}
-S.running=false;S.ld=S.lt=0;if(S.bad.length)toast('Nie można otworzyć: '+S.bad.slice(0,3).join(', ')+(S.bad.length>3?'…':''));else if(S.dup)toast('Pominięto duplikaty: '+S.dup);S.bad=[];S.dup=0;sync()}
+S.running=false;S.ld=S.lt=0;const restored=restoreSession();if(S.bad.length)toast('Nie można otworzyć: '+S.bad.slice(0,3).join(', ')+(S.bad.length>3?'…':''));else if(S.dup)toast('Pominięto duplikaty: '+S.dup);S.bad=[];S.dup=0;if(!restored)sync()}
 function addThumb(t){const cell=E('div','tc'),tw=E('div','tw'),c=E('canvas');c.width=t.tb.width;c.height=t.tb.height;t.cv=c;t.cell=cell;cell.title=t.name;const x=mkb(IC.x,'Usuń z listy',e=>{e.stopPropagation();dropItem(t)},'x');tw.append(c,x);cell.append(tw);cell.onclick=e=>thumbClick(t,e);cell.onauxclick=e=>e.preventDefault();$('#th').append(cell);S.items.push(t)}
 function dropItem(t){const i=S.items.indexOf(t);t.cell.remove();S.items.splice(i,1);S.sel.delete(t);if(S.anchor===t)S.anchor=null;gc();if(t===S.cur){if(S.items.length)return show(S.items[Math.min(i,S.items.length-1)]);S.cur=null;A.clear()}sync()}
 function clearAll(){if(!S.items.length&&!S.q.length)return;S.cleared={items:[...S.items],groups:{...S.groups},refs:{...S.refs},gid:S.items.map(t=>t.group),cur:S.cur,general:S.general,dirty:S.dirty};S.q=[];S.items.forEach(t=>t.cell.remove());S.items=[];S.cur=S.anchor=null;S.sel=new Set;S.hist={};S.redo={};gc();A.clear();sync();toast('Wyczyszczono listę','Przywróć',restoreCleared,true)}

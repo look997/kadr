@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>org.kadr.kadr</id>
+  <id>io.github.look997.kadr</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <name>Kadr</name>
@@ -9,13 +9,18 @@
     <p>Kadr crops several images in one batch. Apply one crop to every image, or set a separate crop for selected files.</p>
     <p>Save cropped copies or replace originals with backup and undo support. The application supports image formats provided by the installed GdkPixbuf modules.</p>
   </description>
-  <launchable type="desktop-id">org.kadr.kadr.desktop</launchable>
+  <launchable type="desktop-id">io.github.look997.kadr.desktop</launchable>
   <url type="homepage">https://github.com/look997/kadr</url>
   <url type="bugtracker">https://github.com/look997/kadr/issues</url>
-  <developer id="org.kadr">
+  <developer id="io.github.look997">
     <name>look997</name>
   </developer>
   <releases>
+    <release version="1.2.2" date="2026-10-02">
+      <description>
+        <p>Updated the application ID and restored browser demo crop sessions after reselecting images.</p>
+      </description>
+    </release>
     <release version="1.2.1" date="2026-10-02">
       <description>
         <p>Updated application translations, browser demo, and distribution metadata.</p>

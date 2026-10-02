@@ -17,8 +17,8 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 BIN="$HOME/.local/bin/kadr"
 APPDIR="$HOME/.local/share/applications"
 ICONDIR="$HOME/.local/share/icons/hicolor/scalable/apps"
-DESKTOP=org.kadr.kadr.desktop
-ICON=org.kadr.kadr.svg
+DESKTOP=io.github.look997.kadr.desktop
+ICON=io.github.look997.kadr.svg
 
 MODE=install
 DO_RESTART=0
@@ -42,8 +42,9 @@ install_files() {
   sed 's|^Exec=kadr %F|Exec='"$BIN"' %F|' "$REPO/$DESKTOP" > "$APPDIR/$DESKTOP.new"
   install -Dm644 "$APPDIR/$DESKTOP.new" "$APPDIR/$DESKTOP"
   rm -f "$APPDIR/$DESKTOP.new"
-  install -Dm644 "$REPO/org.kadr.kadr.svg" "$ICONDIR/$ICON"
-  rm -f "$APPDIR/local.Kadr.desktop" "$ICONDIR/local.Kadr.svg"
+  install -Dm644 "$REPO/$ICON" "$ICONDIR/$ICON"
+  rm -f "$APPDIR/local.Kadr.desktop" "$ICONDIR/local.Kadr.svg" \
+    "$APPDIR/org.kadr.kadr.desktop" "$ICONDIR/org.kadr.kadr.svg"
   command -v update-desktop-database >/dev/null 2>&1 &&
     update-desktop-database "$APPDIR" >/dev/null 2>&1 || true
   command -v gtk-update-icon-cache >/dev/null 2>&1 &&
@@ -65,7 +66,8 @@ case "$MODE" in
 
   remove)
     rm -f "$BIN" "$APPDIR/$DESKTOP" "$ICONDIR/$ICON" \
-      "$APPDIR/local.Kadr.desktop" "$ICONDIR/local.Kadr.svg"
+      "$APPDIR/local.Kadr.desktop" "$ICONDIR/local.Kadr.svg" \
+      "$APPDIR/org.kadr.kadr.desktop" "$ICONDIR/org.kadr.kadr.svg"
     command -v update-desktop-database >/dev/null 2>&1 &&
       update-desktop-database "$APPDIR" >/dev/null 2>&1 || true
     echo "-> usunięte: $BIN, $APPDIR/$DESKTOP, $ICONDIR/$ICON"

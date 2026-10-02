@@ -29,7 +29,7 @@ The interface is available in English and Polish and follows your system locale.
 ## Browser demo
 
 [Open the experimental HTML demo](https://look997.github.io/kadr/kadr.html). It is a separate work-in-progress version, may contain bugs, and is not a replacement for the desktop application.
-The demo follows your browser language; override it with `?lang=en` or `?lang=pl`. It can be installed as a PWA and launched offline after its first load.
+The demo follows your browser language; override it with `?lang=en` or `?lang=pl`. It can be installed as a PWA and launched offline after its first load. Crop and session metadata are kept in the browser; after a reload, select the same image files again to restore them. The browser will not reopen local files without your permission.
 
 ## Installation
 
@@ -47,9 +47,9 @@ yay -S kadr
 git clone https://github.com/look997/kadr.git
 cd kadr
 sudo install -Dm755 kadr /usr/bin/kadr
-sudo install -Dm644 org.kadr.kadr.desktop /usr/share/applications/org.kadr.kadr.desktop
-sudo install -Dm644 org.kadr.kadr.svg /usr/share/icons/hicolor/scalable/apps/org.kadr.kadr.svg
-sudo install -Dm644 org.kadr.kadr.metainfo.xml /usr/share/metainfo/org.kadr.kadr.metainfo.xml
+sudo install -Dm644 io.github.look997.kadr.desktop /usr/share/applications/io.github.look997.kadr.desktop
+sudo install -Dm644 io.github.look997.kadr.svg /usr/share/icons/hicolor/scalable/apps/io.github.look997.kadr.svg
+sudo install -Dm644 io.github.look997.kadr.metainfo.xml /usr/share/metainfo/io.github.look997.kadr.metainfo.xml
 ```
 
 Without root access, copy `kadr` to `~/bin/` or `~/.local/bin/` and add that directory to your `PATH`.
@@ -63,17 +63,19 @@ After installing the dependencies, run `./kadr`. For routine local desktop testi
 
 ### Flatpak
 
-The release manifest template is [`flatpak/org.kadr.kadr.yml.in`](flatpak/org.kadr.kadr.yml.in). It uses `org.kadr.kadr` as the application ID and the GNOME runtime, so GTK4 and libadwaita come from the shared runtime rather than a private bundle. `./release.sh <version>` fills in the exact release archive URL and checksum to create a buildable manifest at `dist/org.kadr.kadr.yml`.
+The Flatpak application ID is `io.github.look997.kadr`. GTK4 and libadwaita come from the shared GNOME runtime rather than a private bundle. Flathub requires the submission manifest to be prepared by the maintainer; do not use an AI-generated manifest.
 
 After creating a release, build and install it locally (requires Flatpak, `flatpak-builder`, and the GNOME 51 SDK/runtime):
 
 ```sh
 flatpak install --user flathub org.gnome.Platform//51 org.gnome.Sdk//51
-flatpak-builder --user --install --force-clean build-dir dist/org.kadr.kadr.yml
-flatpak run org.kadr.kadr
+flatpak-builder --user --install --force-clean build-dir io.github.look997.kadr.yml
+flatpak run io.github.look997.kadr
 ```
 
-The sandbox uses GTK file chooser portals and does not request broad access to the host filesystem. The generated manifest is pinned to the deterministic source archive at `dist/kadr-<version>.tar.gz`; the release script uploads both files as GitHub Release assets. Build and test the manifest, then follow Flathub's current new-app submission process. After approval, the app's repository will be `flathub/org.kadr.kadr`; each subsequent release needs its updated pinned manifest submitted there. Flathub reviews the app ID and manifest as part of submission.
+The sandbox uses GTK file chooser portals and does not request broad access to the host filesystem.
+
+Prepare your own Flathub manifest, pinned to a deterministic source archive from a GitHub Release, then build and test it before following Flathub's current new-app submission process. After approval, the app's repository will be `flathub/io.github.look997.kadr`; future updates are submitted there.
 
 ## Usage
 
@@ -114,7 +116,7 @@ kadr ~/Pictures         # open a folder
 | `~/.cache/kadr/undo/` | Original-file backups used by *Undo* |
 | `~/.cache/kadr/pasted/` | Images pasted from the clipboard (removed after 7 days) |
 
-Flatpak stores the same data under `~/.var/app/org.kadr.kadr/config/kadr/` and `~/.var/app/org.kadr.kadr/cache/kadr/`.
+Flatpak stores the same data under `~/.var/app/io.github.look997.kadr/config/kadr/` and `~/.var/app/io.github.look997.kadr/cache/kadr/`.
 
 ## Development
 
@@ -137,16 +139,16 @@ makepkg -si
 
 ### Releasing a new version
 
-The application sources are `kadr`, `org.kadr.kadr.desktop`, `org.kadr.kadr.svg`, and `org.kadr.kadr.metainfo.xml`. Before each release, update the AppStream release entry in the metainfo file and increment the service-worker cache name in `sw.js` so installed browser demos receive the update. The root [`PKGBUILD`](PKGBUILD) is the only package recipe to edit; `.SRCINFO` is generated during release and copied to AUR. The source archive is reproducible from a pushed tag.
+The application sources are `kadr`, `io.github.look997.kadr.desktop`, `io.github.look997.kadr.svg`, and `io.github.look997.kadr.metainfo.xml`. Before each release, update the AppStream release entry in the metainfo file and increment the service-worker cache name in `sw.js` so installed browser demos receive the update. The root [`PKGBUILD`](PKGBUILD) is the only package recipe to edit; `.SRCINFO` is generated during release and copied to AUR. The source archive is reproducible from a pushed tag.
 
 ```sh
-git add -A && git commit -m 'release: prepare 1.2.1'
-git tag v1.2.1 && git push origin main --tags
-./release.sh 1.2.1              # reproducible source archive -> GitHub release + AUR
-./release.sh --dry-run 1.2.1    # generate and validate artifacts without publishing
+git add -A && git commit -m 'release: prepare 1.2.2'
+git tag v1.2.2 && git push origin main --tags
+./release.sh 1.2.2              # reproducible source archive -> GitHub release + AUR
+./release.sh --dry-run 1.2.2    # generate and validate artifacts without publishing
 ```
 
-The release script refuses to run on a dirty working tree, requires the tag to be pushed to GitHub, and checks that the GitHub asset matches the `sha256` in `PKGBUILD`. It creates the GitHub release if needed, publishes the AUR package, and uploads the pinned Flatpak manifest as a release asset; submit that manifest to Flathub separately. It never invokes `sudo`.
+The release script refuses to run on a dirty working tree, requires the tag to be pushed to GitHub, and checks that the GitHub asset matches the `sha256` in `PKGBUILD`. It creates the GitHub release if needed and publishes the AUR package. It never invokes `sudo`.
 
 ## Notes
 

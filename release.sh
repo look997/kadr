@@ -6,9 +6,9 @@
 #
 # files in repo ──git archive──> dist/kadr-$v.tar.gz ──gh release upload──> asset v$v
 #                                         ├─sha256──> PKGBUILD ──.SRCINFO──> AUR
-#                                         └─sha256──> Flatpak manifest ──> Flathub PR
+#                                         └─sha256──> source pin for a maintainer-written Flatpak manifest
 #
-# PKGBUILD is the sole source of truth; .SRCINFO and the Flatpak source pin are generated.
+# PKGBUILD is the sole source of truth; .SRCINFO is generated.
 #
 # Użycie:
 #   ./release.sh <wersja>                np. ./release.sh 1.2.1
@@ -27,7 +27,7 @@ sha() { sha256sum "$1" | cut -d' ' -f1; }
 
 PKG=kadr
 # jedyne pliki, które trafiają do paczki — lista jest tu, żeby nie rozjechała się z package()
-FILES=(kadr org.kadr.kadr.desktop org.kadr.kadr.svg org.kadr.kadr.metainfo.xml locale/en/LC_MESSAGES/kadr.mo)
+FILES=(kadr io.github.look997.kadr.desktop io.github.look997.kadr.svg io.github.look997.kadr.metainfo.xml locale/en/LC_MESSAGES/kadr.mo)
 
 DRY=0
 VER=""
@@ -65,8 +65,8 @@ git diff --cached --quiet || die "są zaindeksowane, niezacommitowane zmiany —
 git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || die "brak taga $TAG"
 git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1 \
   || die "tag $TAG nie jest na GitHubie — zrób: git tag $TAG && git push origin $TAG"
-grep -qF "<release version=\"$VER\"" org.kadr.kadr.metainfo.xml \
-  || die "brak wpisu AppStream dla wersji $VER — zaktualizuj org.kadr.kadr.metainfo.xml przed tagiem"
+grep -qF "<release version=\"$VER\"" io.github.look997.kadr.metainfo.xml \
+  || die "brak wpisu AppStream dla wersji $VER — zaktualizuj io.github.look997.kadr.metainfo.xml przed tagiem"
 for f in "${FILES[@]}"; do
   git cat-file -e "$TAG:$f" 2>/dev/null || die "plik $f nie należy do taga $TAG"
 done
@@ -118,23 +118,12 @@ done
 say ".SRCINFO z PKGBUILD"
 makepkg --printsrcinfo --dir "$AUR_STAGE" > "$AUR_STAGE/.SRCINFO"
 
-# Keep a release-pinned manifest as an explicit handoff artifact for Flathub.
-FLATPAK_MANIFEST_TEMPLATE="$REPO/flatpak/org.kadr.kadr.yml.in"
-FLATPAK_RELEASE_MANIFEST="$REPO/dist/org.kadr.kadr.yml"
-sed -E \
-  -e "s|^        url: .*|        url: https://github.com/look997/kadr/releases/download/$TAG/$TARBALL|" \
-  -e "s|^        sha256: .*|        sha256: $SHA|" \
-  "$FLATPAK_MANIFEST_TEMPLATE" > "$FLATPAK_RELEASE_MANIFEST"
-grep -qF 'SOURCE_ARCHIVE_' "$FLATPAK_RELEASE_MANIFEST" \
-  && die "nie udało się wypełnić źródła w manifeście Flatpaka"
-say "manifest Flathub: $FLATPAK_RELEASE_MANIFEST"
-
 if [ "$DRY" = 1 ]; then
-  say "DRY RUN — wygenerowano archiwum i metadane, niczego nie wypchnięto ani nie zmieniono w źródłach."
+  say "DRY RUN — wygenerowano archiwum i metadane AUR, niczego nie wypchnięto ani nie zmieniono w źródłach."
   exit 0
 fi
 
-# 5) Upload the source archive; AUR and Flathub both build from this exact artifact.
+# 5) Upload the source archive.
 OPTIONAL_FAILURES=()
 if gh release view "$TAG" >/dev/null 2>&1; then
   say "release $TAG już istnieje"
@@ -148,20 +137,6 @@ if [ -n "$REMOTE_SHA" ]; then
 else
   say "wgrywam asset $TARBALL na release $TAG"
   gh release upload "$TAG" "dist/$TARBALL"
-fi
-
-# Publish the matching pinned manifest as a companion asset for the Flathub submission.
-FLATPAK_RELEASE_NAME="$(basename "$FLATPAK_RELEASE_MANIFEST")"
-if gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx "$FLATPAK_RELEASE_NAME"; then
-  rm -f "$TMP/$FLATPAK_RELEASE_NAME"
-  gh release download "$TAG" -p "$FLATPAK_RELEASE_NAME" -D "$TMP" >/dev/null 2>&1 \
-    || die "manifest Flatpaka już istnieje, ale nie można go pobrać do porównania"
-  cmp -s "$FLATPAK_RELEASE_MANIFEST" "$TMP/$FLATPAK_RELEASE_NAME" \
-    || die "manifest Flatpaka już istnieje z inną treścią — nie nadpisuję assetu"
-  say "asset $FLATPAK_RELEASE_NAME już jest na $TAG i jest zgodny"
-else
-  say "wgrywam manifest Flatpaka na release $TAG"
-  gh release upload "$TAG" "$FLATPAK_RELEASE_MANIFEST"
 fi
 
 # 7) Publish AUR from the single canonical PKGBUILD in the repository root.
