@@ -2830,7 +2830,7 @@ class Win(Adw.ApplicationWindow):
             t.current = t is cur
             t.selected = t in self.selected
             t.queue_draw()
-            tip = t.name + '\n' + _('Ścieżka źródłowa: {path}').format(path=t.path) + (
+            tip = t.name + '\n' + os.path.dirname(t.path) + (
                 '\n' + _('Środkowy przycisk myszy — pokaż w menedżerze plików')) + (
                 '\n% — ' + _('kadr przeskalowany pod ten obraz')
                             if self.raw_of(t) and self.ratio(t) else '')
