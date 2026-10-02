@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kadrowanie zbiorcze</title><meta name="description" lang="pl" content="Eksperymentalne demo kadrowania wielu obrazów tym samym kadrem."><meta name="description" lang="en" content="Experimental demo for cropping multiple images with the same crop area.">
+<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#1f1f1e"><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./org.kadr.kadr.svg" type="image/svg+xml"><title>Kadrowanie zbiorcze</title><meta name="description" lang="pl" content="Eksperymentalne demo kadrowania wielu obrazów tym samym kadrem."><meta name="description" lang="en" content="Experimental demo for cropping multiple images with the same crop area.">
 <style>
 :root{--bg:#1f1f1e;--dim:#a7a7a7;--ac:#487cdf;--gr:#3ec46d;--sw:300px;--rows:1;color-scheme:dark}
 *{box-sizing:border-box}html,body{height:100%;margin:0;background:var(--bg);color:#fff;font:14px/1.4 Cantarell,"Adwaita Sans",system-ui,sans-serif;overflow:hidden;user-select:none}
@@ -26,8 +26,10 @@ input[type=text]:focus{box-shadow:inset 0 0 0 2px var(--ac)}
 .sp input{flex:1;width:0;min-width:0;border:0;background:none;padding:0 8px;outline:none;-moz-appearance:textfield;appearance:textfield}.sp input::-webkit-inner-spin-button,.sp input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .sp button{flex:none;width:30px;padding:0;border:0;border-left:1px solid rgba(255,255,255,.08);background:none;display:flex;align-items:center;justify-content:center;cursor:pointer}.sp button:hover{background:rgba(255,255,255,.1)}.sp button:active{background:rgba(255,255,255,.16)}
 #main.side .sp{width:auto;margin:0}#main.side .sp button{width:22px}#main.side .sp input{padding:0 6px}
-#info{flex:1 1 0;min-width:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dim);user-select:text}#main.side #info{text-align:left;white-space:normal;overflow:visible}#ex{display:none;flex-direction:column;gap:6px;min-height:0}#ex.on{display:flex}#main.side #ex{flex:1}
-#top{display:flex;align-items:center;gap:6px}#cnt{flex:1;color:var(--dim)}
+#info{flex:1 1 0;min-width:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dim);user-select:text;caret-color:transparent;cursor:default}#info.selected{cursor:text}#main.side #info{text-align:left;white-space:normal;overflow:visible}#ex{display:none;flex-direction:column;gap:6px;min-height:0}#ex.on{display:flex}#main.side #ex{flex:1}
+#pn{container-type:inline-size}#top{display:flex;align-items:center;gap:6px}#cnt{flex:1;color:var(--dim);cursor:default;caret-color:transparent}#thumb-actions{display:flex;gap:6px;flex:none}#main.side #top{flex-wrap:wrap}#main.side #cnt{flex:1 1 100px}
+@container (max-width:262px){#main.side #thumb-actions{display:grid;grid-template-columns:1fr}}
+@media (display-mode:window-controls-overlay){header{-webkit-app-region:drag;padding-right:calc(100vw - env(titlebar-area-x,0px) - env(titlebar-area-width,100vw) + 6px);padding-left:calc(env(titlebar-area-x,0px) + 6px)}header button{-webkit-app-region:no-drag}}
 #th{display:grid;gap:6px;overflow:auto;padding:0 12px 12px 0;align-content:start;align-items:center;justify-items:center}
 #main.bottom #th{grid-auto-flow:column;grid-template-rows:repeat(var(--rows),auto);grid-auto-columns:max-content;justify-content:start;overflow-y:hidden}
 #main.side #th{grid-template-columns:repeat(auto-fill,128px);flex:1;justify-content:center;overflow-x:hidden}
@@ -39,7 +41,7 @@ input[type=text]:focus{box-shadow:inset 0 0 0 2px var(--ac)}
 .menu{position:fixed;background:#2b2b2a;border-radius:12px;padding:6px;box-shadow:0 2px 14px #000c,0 0 0 1px rgba(255,255,255,.1);z-index:8;display:none;min-width:190px}.menu.on{display:block}.menu hr{border:0;border-top:1px solid rgba(255,255,255,.1);margin:4px 0}
 .menu div{padding:6px 12px;border-radius:6px;cursor:pointer}.menu div:hover{background:rgba(255,255,255,.1)}.menu div.off{opacity:.4;pointer-events:none}
 dialog{background:var(--bg);color:#fff;border:0;border-radius:14px;padding:24px;max-width:min(520px,94vw);box-shadow:0 0 0 1px rgba(255,255,255,.12),0 8px 40px #000}dialog::backdrop{background:rgba(0,0,0,.55)}
-dialog h2{margin:0 0 8px;text-align:center;font-size:20px}.bd{text-align:center;margin-bottom:14px;white-space:pre-line}.bt{display:flex;gap:12px}.bt .b{flex:1;height:38px}
+dialog h2{margin:0 0 8px;text-align:center;font-size:20px}.bd{text-align:center;margin-bottom:14px;white-space:pre-line}.bt{display:flex;gap:12px}.bt .b{flex:1;height:38px;min-height:38px}
 .bl{background:rgba(255,255,255,.06);border-radius:12px;text-align:left;margin-bottom:14px;white-space:normal}.row{display:flex;align-items:center;gap:6px;padding:10px 12px;border-top:1px solid rgba(255,255,255,.08)}.row:first-child{border:0}.row>div{flex:1;min-width:0}.row small{display:block;color:var(--dim);white-space:pre-line;word-break:break-all;user-select:text}.row b{font-weight:400}
 input[type=text]{width:100%;height:34px;border:0;border-radius:6px;background:rgba(255,255,255,.08);padding:0 10px;outline:none}
 </style></head><body>
@@ -47,11 +49,11 @@ input[type=text]{width:100%;height:34px;border:0;border-radius:6px;background:rg
 <button class="b" id="bo" title="Wybierz jeden lub wiele obrazów — wszystkie dostaną ten sam kadr.&#10;Kolejne obrazy dodają się do listy (duplikaty są pomijane).&#10;Możesz też przeciągnąć je na okno albo wkleić przez Ctrl+V."></button>
 <button class="b" id="ba" title="Zapisuje przycięte kopie wszystkich załadowanych obrazów jako nowe pliki.&#10;Nazwę (schemat) można zmienić w dialogu.&#10;Środkowy przycisk myszy: zapisuje od razu, bez dialogu — ostatnio użytym schematem."></button>
 <div class="t"><b id="tt">Kadrowanie zbiorcze</b><small id="tsub"></small></div>
-<button class="b" id="bu"></button>
+<button class="b f" id="bu"></button>
 <button class="b sa" id="bs" title="Zastępuje oryginalne pliki przyciętymi wersjami — dotyczy wszystkich załadowanych obrazów (każdy wg swojego kadru).&#10;Przeglądarki z File System Access API (Chrome/Edge) nadpisują pliki i pozwalają to cofnąć; w innych (np. Firefox) pobiera przycięte kopie.">Zastąp oryginalne</button>
 <button class="b f" id="bi"></button><button class="b f" id="bp"></button></header>
 <div id="main" class="bottom"><div id="cvw"><canvas id="cv" tabindex="0"></canvas></div><div id="bg" class="grip" title="Przeciągnij, aby zmienić wysokość panelu (liczbę wierszy miniatur)"></div><div id="sg" class="grip" title="Przeciągnij, aby zmienić szerokość panelu"></div>
-<aside id="pn"><div id="fw"></div><div id="ex"><div id="top"><span class="spin" id="sp"></span><span id="cnt"></span><button class="b f sm" id="bd" title="Czyści zaznaczenie miniatur (Esc)">Odznacz</button><button class="b f sm" id="bc" title="Usuwa wszystkie obrazy z listy (pliki na dysku zostają)">Wyczyść</button></div><div id="th"></div></div></aside></div></div>
+<aside id="pn"><div id="fw"></div><div id="ex"><div id="top"><span class="spin" id="sp"></span><span id="cnt"></span><div id="thumb-actions"><button class="b f sm" id="bd" title="Czyści zaznaczenie miniatur (Esc)">Odznacz</button><button class="b f sm" id="bc" title="Usuwa wszystkie obrazy z listy (pliki na dysku zostają)">Wyczyść</button></div></div><div id="th"></div></div></aside></div></div>
 <div id="toasts"></div><div class="menu" id="menu"></div><input type="file" id="fi" multiple accept="image/*" hidden>
 <script>
 const langParam=new URLSearchParams(location.search).get('lang');
@@ -62,7 +64,7 @@ const UI=new Map([
 ['Eksperymentalne demo kadrowania wielu obrazów tym samym kadrem.','Experimental demo for cropping multiple images with the same crop area.'],
 ['[nazwa]','[name]'],['[nr]','[number]'],['[rozszerzenie]','[extension]'],
 ['1:1 — kwadrat','1:1 — square'],['Jak obraz','Match image'],
-['Otwórz obrazy, aby zacząć','Open images to get started'],['Otwórz obrazy','Open images'],['Zapisz jako','Save As'],
+['Otwórz obrazy, aby zacząć','Open images to get started'],['Otwórz obrazy','Open images'],['Zapisz jako…','Save As…'],['Zapisz jako','Save As'],
 ['Zastąp oryginalne','Replace originals'],['Odznacz','Deselect'],['Wyczyść','Clear'],
 ['Usuń z listy','Remove from list'],['Wyczyszczono listę','List cleared'],['Przywróć','Restore'],
 ['Proporcje kadru\nOdwracanie proporcji i wyśrodkowanie kadru','Crop ratio\nFlip ratio and center crop'],
@@ -271,11 +273,11 @@ const sp={},fw=$('#fw');
 for(const[k,t]of(EN?[['x','X'],['y','Y'],['w','W'],['h','H']]:[['x','X'],['y','Y'],['w','Szer.'],['h','Wys.']])){const l=E('span','fl'+(k=='y'||k=='h'?' l2':''),t),w=E('div','sp'),i=E('input'),bm=E('button','',IC.mn),bp=E('button','',IC.ad);i.type='number';i.min=0;i.value=0;i.step=1;bm.tabIndex=bp.tabIndex=-1;bm.type=bp.type='button';w.append(i,bm,bp);fw.append(l,w);sp[k]=i;i.oninput=()=>onSpin(k);i.onkeydown=e=>{if(e.key=='Enter'){cv.focus()}};hold(bm,()=>{i.stepDown();onSpin(k)});hold(bp,()=>{i.stepUp();onSpin(k)})}
 const info=E('div');info.id='info';fw.append(info);
 const mkb=(h,t,fn,c='')=>{const b=E('button','b '+c,h);if(t)b.title=t;b.onclick=fn;return b},grp=(...b)=>{const d=E('div','lk');d.append(...b);return d};
-const bRatio=mkb(IC.rt,'Proporcje kadru\nOdwracanie proporcji i wyśrodkowanie kadru',e=>{e.stopPropagation();ratioMenu(bRatio)}),bH=mkb(IC.undo,'',hundo);
+const bRatio=mkb(IC.rt+I('<path d="m5 6 3 3 3-3"/>'),'Proporcje kadru\nOdwracanie proporcji i wyśrodkowanie kadru',e=>{e.stopPropagation();if($('#menu').classList.contains('on'))$('#menu').classList.remove('on');else ratioMenu(bRatio)}),bH=mkb(IC.undo,'',hundo,'f');
 const zo=mkb(IC.zo,'Oddal (scroll w dół nad obrazem, ↓, −)',()=>A.zoomBy(1/ZS)),zf=mkb('—','Dopasuj do okna\nScroll nad obrazem, ↑/↓, +/− — zoom\nPrawy/środkowy przycisk myszy — przesuwanie\n←/→ lub kółko myszy poza obrazem — poprzedni/następny obraz',()=>A.zoomTo(1)),zi=mkb(IC.zi,'Przybliż (scroll w górę nad obrazem, ↑, +)',()=>A.zoomBy(ZS));zf.style.width='56px';
 const bP=mkb(IC.pv,'Poprzedni obraz (←)',()=>step(-1)),bN=mkb(IC.nx,'Następny obraz (→)',()=>step(1));
 const zr=E('div','zr'),tl=E('div','tools');zr.append(grp(bRatio,bH),grp(zo,zf,zi));tl.append(zr,grp(bP,bN));fw.append(tl);
-$('#bo').innerHTML=IC.open+'Otwórz obrazy';$('#ba').innerHTML=IC.sas+'Zapisz jako';$('#bu').innerHTML=IC.undo+'Cofnij';
+$('#bo').innerHTML=IC.open+'Otwórz obrazy';$('#ba').innerHTML=IC.sas+'Zapisz jako…';$('#bu').innerHTML=IC.undo+'Cofnij';
 $('#bo').onclick=()=>openFiles();$('#ba').onclick=askSaveAs;$('#ba').onauxclick=e=>{if(e.button==1){e.preventDefault();if(!$('#ba').disabled)doSave(false)}};$('#bs').onclick=askOverwrite;$('#bu').onclick=undoSave;$('#bi').onclick=toggleIndiv;$('#bp').onclick=()=>setMode(PM[(PM.indexOf(S.mode)+1)%3]);$('#bd').onclick=()=>{S.sel=new Set;sync()};$('#bc').onclick=clearAll;
 const TIP={bottom:'Panel: na dole.\nKliknij, aby przenieść go na prawo.',side:'Panel: po prawej.\nKliknij, aby go ukryć.',hidden:'Panel ukryty.\nKliknij, aby pokazać go na dole.'};
 function ratioMenu(btn){const m=$('#menu'),has=A.pix&&A.sel;m.innerHTML='';for(const[k,l]of RATIOS){const d=E('div','',l);d.onclick=()=>ratioApply(k);m.append(d)}m.append(E('hr'));for(const[l,f]of[['Odwróć proporcje',ratioFlip],['Wyśrodkuj kadr',ratioCenter]]){const d=E('div',has?'':'off',l);d.onclick=f;m.append(d)}const r=btn.getBoundingClientRect();m.classList.add('on');m.style.left=Math.min(r.left,innerWidth-210)+'px';m.style.top=(r.top-m.offsetHeight-4>0?r.top-m.offsetHeight-4:r.bottom+4)+'px'}
@@ -351,15 +353,75 @@ const MIME={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp'
 function outName(name,scheme,now,nr){const m=name.match(/^(.*?)(?:\.([^.]+))?$/),root=m[1],e=(m[2]||'').toLowerCase();let ext=e,mime=MIME[e];if(!mime){ext='png';mime='image/png'}const s=(fmt(scheme,now).replace(/\[(?:nr|number)\]/g,nr).replace(/\[(?:nazwa|name)\]/g,root).replace(/[\/\\\0]/g,'_').trim())||root;return[s+'.'+ext,mime]}
 function commandsText(scheme,now){const L=[];let n=0;S.items.forEach((t,i)=>{const c=crop(t);if(!c)return;let[x,y,w,h]=c;if(x>=t.w||y>=t.h)return;w=Math.min(w,t.w-x);h=Math.min(h,t.h-y);n++;L.push(`${n}. Przytnij: ${t.name}`,`   Kadr: x=${x}, y=${y}, szerokość=${w}, wysokość=${h} px (od lewego górnego rogu; obraz ma ${t.w}×${t.h} px${ratioOf(t)?'; kadr przeskalowany pod ten obraz':''})`,`   Zapisz jako: ${outName(t.name,scheme,now,i+1)[0]}`,'')});return tr(L.join('\n').trim())}
 async function askOverwrite(){const nc=S.items.filter(crop).length,fa=!!window.showOpenFilePicker;const r=await dlg('Zastąpić oryginalne?',`Obrazy z kadrem (${nc}) zostaną zastąpione przyciętymi wersjami — każdy wg swojego kadru. `+(fa?'Chrome zapyta o zgodę na zapis (wystarczy jedna na folder z obrazami). Kopie oryginałów zostaną zachowane w pamięci karty, więc możesz to cofnąć przyciskiem „Cofnij”.':'Ta przeglądarka nie pozwala nadpisywać plików — zamiast tego zostaną pobrane przycięte kopie pod oryginalnymi nazwami.')+'\nFormaty bez obsługi zapisu trafiają jako PNG.',[['Anuluj','','no'],['Zastąp','dg','yes']]);if(r=='yes')doSave(true)}
-async function askSaveAs(){const now=new Date(),nr=S.items.filter(crop).length,ex=(S.cur||S.items[0]).name,st={scheme:S.scheme,edit:false};S.dest=null;const bd=E('div'),bl=E('div','bl');bd.append(bl);const hint=E('div','dim');hint.style.cssText='font-size:12px;margin-bottom:14px;display:none;text-align:left;white-space:normal';hint.textContent=SCH;bd.append(hint);
-let copyB;const render=()=>{const[name]=outName(ex,st.scheme,now,1);bl.innerHTML='';const r1=E('div','row'),r2=E('div','row'),r3=E('div','row'),r4=E('div','row');
-r1.innerHTML=`<div><b>Folder zapisu</b><small></small></div>`;r1.querySelector('small').textContent=S.dest?S.dest.name:(EN?'Downloads':'Pobrane — domyślny folder przeglądarki');if(S.dest){const b=E('button','b f sm',EN?'Downloads':'Pobrane');b.onclick=()=>{S.dest=null;render()};r1.append(b)}if(window.showDirectoryPicker){const b=E('button','b sm','Wybierz…');b.onclick=async()=>{try{S.dest=await showDirectoryPicker({mode:'readwrite'});render()}catch{}};r1.append(b)}
-r2.innerHTML=`<div><b>Schemat nazwy</b><small><span style="color:${ACC};font-weight:700"></span>[rozszerzenie]</small></div>`;r2.querySelector('span').textContent=st.scheme;const be=E('button','b sm',st.edit?'Gotowe':'Edytuj');be.onclick=()=>{st.edit=!st.edit;hint.style.display=st.edit?'block':'none';render()};r2.append(be);bl.append(r1,r2);
-if(st.edit){const r=E('div','row'),i=E('input');i.type='text';i.value=EN?tr(st.scheme):st.scheme;i.oninput=()=>{st.scheme=i.value.trim()||DEF;r2.querySelector('span').textContent=st.scheme;pv()};i.onkeydown=e=>{if(e.key=='Enter'){st.edit=false;hint.style.display='none';render()}};r.append(i);const t=E('div','row');t.style.flexWrap='wrap';for(const[l,k]of EN?[['Name','[name]'],['No.','[number]'],['Date','%Y%m%d'],['Time','%H%M%S']]:[['Nazwa','[nazwa]'],['Nr','[nr]'],['Data','%Y%m%d'],['Godz.','%H%M%S']]){const b=E('button','b sm',l);b.title=(EN?'Insert ':'Wstaw ')+k;b.onclick=()=>{const p=i.selectionStart??i.value.length;i.value=i.value.slice(0,p)+k+i.value.slice(p);i.oninput();i.focus();i.setSelectionRange(p+k.length,p+k.length)};t.append(b)}const bdf=E('button','b f sm',EN?'Default':'Domyślny');bdf.onclick=()=>{i.value=DEF;i.oninput()};t.append(bdf);bl.append(r,t);setTimeout(()=>i.focus())}
-r3.innerHTML='<div><b>Podgląd nazwy</b><small></small></div>';r3.className='row';bl.append(r3);const pv=()=>{r3.querySelector('small').textContent=outName(ex,st.scheme,now,1)[0]+'\n'+(S.dest?S.dest.name:(EN?'Downloads':'Pobrane'))+`\nTak samo zapiszą się wszystkie obrazy z kadrem (${nr}).`};pv()};
-render();const wrap=E('div');wrap.style.position='relative';wrap.append(bd);
-const p=dlg('Zapisz jako','Przycięte kopie zostaną zapisane jako nowe pliki. Oryginały się nie zmienią.',[['Anuluj','','no'],['Zapisz','sa','yes']],(d)=>{d.querySelector('.bd').after(bd);copyB=mkb(IC.cp,'Kopiuj polecenia dla obrazów\nDo schowka trafia lista: co przyciąć, jakim kadrem i do jakiej nazwy — osobno dla każdego obrazu.',async()=>{await navigator.clipboard.writeText(commandsText(st.scheme,now));copyB.innerHTML=IC.ok;setTimeout(()=>copyB.innerHTML=IC.cp,1800)},'f');copyB.style.cssText='position:absolute;top:8px;right:8px;border-radius:50%;width:30px;min-width:0;padding:0';d.append(copyB)});
-if(await p=='yes'){S.scheme=st.scheme;persist();doSave(false,now,S.dest)}}
+async function askSaveAs(){
+ const nr=S.items.filter(crop).length,ex=(S.cur||S.items[0]).name,st={scheme:S.scheme,edit:false};
+ S.dest=null;
+ const bd=E('div'),bl=E('div','bl'),hint=E('div','dim');
+ bd.append(bl);
+ hint.style.cssText='font-size:12px;margin-bottom:14px;display:none;text-align:left;white-space:normal';
+ hint.textContent=SCH;
+ bd.append(hint);
+ let copyB,previewEl,saveNow=null;
+ const pv=(now=new Date())=>{
+  if(!previewEl)return;
+  previewEl.textContent=outName(ex,st.scheme,now,1)[0]+'\n'+
+   (S.dest?S.dest.name:(EN?'Downloads':'Pobrane'))+
+   `\nTak samo zapiszą się wszystkie obrazy z kadrem (${nr}).`;
+ };
+ const render=()=>{
+  bl.innerHTML='';
+  const r1=E('div','row'),r2=E('div','row'),r3=E('div','row');
+  r1.innerHTML='<div><b>Folder zapisu</b><small></small></div>';
+  r1.querySelector('small').textContent=S.dest?S.dest.name:(EN?'Downloads':'Pobrane — domyślny folder przeglądarki');
+  if(S.dest){
+   const b=E('button','b f sm',EN?'Downloads':'Pobrane');
+   b.onclick=()=>{S.dest=null;render()};
+   r1.append(b);
+  }
+  if(window.showDirectoryPicker){
+   const b=E('button','b sm','Wybierz…');
+   b.onclick=async()=>{try{S.dest=await showDirectoryPicker({mode:'readwrite'});render()}catch{}};
+   r1.append(b);
+  }
+  r2.innerHTML=`<div><b>Schemat nazwy</b><small><span style="color:${ACC};font-weight:700"></span>[rozszerzenie]</small></div>`;
+  r2.querySelector('span').textContent=st.scheme;
+  const be=E('button','b sm',st.edit?'Gotowe':'Edytuj');
+  be.onclick=()=>{st.edit=!st.edit;hint.style.display=st.edit?'block':'none';render()};
+  r2.append(be);
+  bl.append(r1,r2);
+  if(st.edit){
+   const r=E('div','row'),i=E('input');
+   i.type='text';i.value=EN?tr(st.scheme):st.scheme;
+   i.oninput=()=>{st.scheme=i.value.trim()||DEF;r2.querySelector('span').textContent=st.scheme;pv()};
+   i.onkeydown=e=>{if(e.key=='Enter'){st.edit=false;hint.style.display='none';render()}};
+   r.append(i);
+   const t=E('div','row');t.style.flexWrap='wrap';
+   for(const[l,k]of EN?[['Name','[name]'],['No.','[number]'],['Date','%Y%m%d'],['Time','%H%M%S']]:[['Nazwa','[nazwa]'],['Nr','[nr]'],['Data','%Y%m%d'],['Godz.','%H%M%S']]){
+    const b=E('button','b sm',l);b.title=(EN?'Insert ':'Wstaw ')+k;
+    b.onclick=()=>{const p=i.selectionStart??i.value.length;i.value=i.value.slice(0,p)+k+i.value.slice(p);i.oninput();i.focus();i.setSelectionRange(p+k.length,p+k.length)};
+    t.append(b);
+   }
+   const bdf=E('button','b f sm',EN?'Default':'Domyślny');bdf.onclick=()=>{i.value=DEF;i.oninput()};t.append(bdf);
+   bl.append(r,t);setTimeout(()=>i.focus());
+  }
+  r3.innerHTML='<div><b>Podgląd nazwy</b><small></small></div>';
+  r3.className='row';previewEl=r3.querySelector('small');bl.append(r3);pv();
+ };
+ render();
+ const p=dlg('Zapisz jako','Przycięte kopie zostaną zapisane jako nowe pliki. Oryginały się nie zmienią.',
+  [['Anuluj','','no'],['Zapisz','sa','yes']],d=>{
+   d.querySelector('.bd').after(bd);
+   const saveButton=[...d.querySelectorAll('.bt .b')].find(button=>button.textContent==='Zapisz');
+   saveButton?.addEventListener('click',()=>{saveNow=new Date();pv(saveNow)},{capture:true});
+   copyB=mkb(IC.cp,'Kopiuj polecenia dla obrazów\nDo schowka trafia lista: co przyciąć, jakim kadrem i do jakiej nazwy — osobno dla każdego obrazu.',async()=>{
+    await navigator.clipboard.writeText(commandsText(st.scheme,new Date()));copyB.innerHTML=IC.ok;setTimeout(()=>copyB.innerHTML=IC.cp,1800)
+   },'f');
+   copyB.style.cssText='position:absolute;top:8px;right:8px;border-radius:50%;width:30px;min-width:0;padding:0';d.append(copyB);
+  });
+ const previewTimer=setInterval(pv,1000),answer=await p;
+ clearInterval(previewTimer);
+ if(answer=='yes'){saveNow??=new Date();S.scheme=st.scheme;persist();doSave(false,saveNow,S.dest)}
+}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function showErrs(errs){const b=E('div');b.style.cssText='white-space:pre-wrap;text-align:left;font-size:12px;max-height:50vh;overflow:auto;user-select:text;word-break:break-word';b.textContent=errs.join('\n\n');dlg('Szczegóły błędów',b,[['Zamknij','sa','ok']])}
 // Uchwyty z showOpenFilePicker są tylko do odczytu (opcja „mode” istnieje wyłącznie w showDirectoryPicker). Zgoda na zapis
@@ -389,5 +451,13 @@ async function undoSave(){const m=S.undoM;if(!m||S.saving)return;if(!await grant
 for(const u of m.items){try{const w=await u.t.fh.createWritable();await w.write(u.blob);await w.close();const bm=await createImageBitmap(u.blob),k2=CELL/Math.max(bm.width,bm.height),tb=E('canvas');tb.width=Math.max(1,Math.round(bm.width*k2));tb.height=Math.max(1,Math.round(bm.height*k2));const cx=tb.getContext('2d');cx.imageSmoothingQuality='high';cx.drawImage(bm,0,0,tb.width,tb.height);Object.assign(u.t,{file:u.blob,bm,w:bm.width,h:bm.height,tb});u.t.cv.width=tb.width;u.t.cv.height=tb.height}catch(e){bad.push(u);errs.push(`${u.t.name}\n${e.name||'Error'}: ${e.message||e}`);console.error(u.t.name,e)}}
 const c=m.crops;S.general=c.general;S.groups=c.groups;S.refs=c.refs;S.items.forEach((t,i)=>{if(c.gid[i]!==undefined)t.group=c.gid[i]});gc();S.undoM=bad.length?{...m,items:bad}:null;S.saving=false;S.dirty=true;if(S.cur)A.setPix(S.cur.bm);sync();
 if(bad.length)toast(`Przywrócono: ${m.items.length-bad.length}, błędy: ${bad.length}`,'Szczegóły',()=>showErrs(errs),true);else toast('Przywrócono oryginalne pliki i kadry')}
+document.addEventListener('selectionchange',()=>{
+ const selection=getSelection(),info=$('#info');
+ info.classList.toggle('selected',!!selection&&!selection.isCollapsed&&
+  info.contains(selection.anchorNode)&&info.contains(selection.focusNode));
+});
 layout();sync();A.resize();
+navigator.serviceWorker?.register('./sw.js',{updateViaCache:'none'})
+ .then(registration=>registration.update())
+ .catch(error=>console.error('Service worker registration failed',error));
 </script></body></html>

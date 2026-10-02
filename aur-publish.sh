@@ -11,13 +11,15 @@
 set -euo pipefail
 
 PKG=kadr
-SRC="$(cd "$(dirname "$0")" && pwd)/aur"
+REPO="$(cd "$(dirname "$0")" && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 echo "-> klonuję  ${PKG}.git"
 git -c init.defaultBranch=master clone "ssh://aur@aur.archlinux.org/${PKG}.git" "$WORK/$PKG"
-cp "$SRC/PKGBUILD" "$SRC/.SRCINFO" "$SRC/LICENSE" "$WORK/$PKG/"
+cd "$REPO"
+makepkg --printsrcinfo > "$WORK/$PKG/.SRCINFO"
+cp "$REPO/PKGBUILD" "$REPO/LICENSE" "$WORK/$PKG/"
 
 cd "$WORK/$PKG"
 git add PKGBUILD .SRCINFO LICENSE

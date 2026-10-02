@@ -98,6 +98,10 @@ msgstr "Open Images"
 msgid "Zapisz jako"
 msgstr "Save As"
 
+#: kadr:1169
+msgid "Zapisz jako…"
+msgstr "Save As…"
+
 #: kadr:1181
 msgid ""
 "Zapisuje przycięte kopie wszystkich załadowanych obrazów jako nowe pliki.\n"
@@ -415,6 +419,11 @@ msgstr "save failed"
 #: kadr:2530
 msgid "Nie można wkleić obrazu ze schowka"
 msgstr "Could not paste the image from the clipboard"
+
+#: kadr:2488
+#, python-brace-format
+msgid "Nie można otworzyć okna wyboru plików: {error}"
+msgstr "Could not open the file chooser: {error}"
 
 #: kadr:2537
 msgid "Trwa zapisywanie — dodaj obrazy, gdy się skończy"

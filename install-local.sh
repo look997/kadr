@@ -17,8 +17,8 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 BIN="$HOME/.local/bin/kadr"
 APPDIR="$HOME/.local/share/applications"
 ICONDIR="$HOME/.local/share/icons/hicolor/scalable/apps"
-DESKTOP=local.Kadr.desktop
-ICON=local.Kadr.svg
+DESKTOP=org.kadr.kadr.desktop
+ICON=org.kadr.kadr.svg
 
 MODE=install
 DO_RESTART=0
@@ -42,7 +42,8 @@ install_files() {
   sed 's|^Exec=kadr %F|Exec='"$BIN"' %F|' "$REPO/$DESKTOP" > "$APPDIR/$DESKTOP.new"
   install -Dm644 "$APPDIR/$DESKTOP.new" "$APPDIR/$DESKTOP"
   rm -f "$APPDIR/$DESKTOP.new"
-  install -Dm644 "$REPO/$ICON" "$ICONDIR/$ICON"
+  install -Dm644 "$REPO/org.kadr.kadr.svg" "$ICONDIR/$ICON"
+  rm -f "$APPDIR/local.Kadr.desktop" "$ICONDIR/local.Kadr.svg"
   command -v update-desktop-database >/dev/null 2>&1 &&
     update-desktop-database "$APPDIR" >/dev/null 2>&1 || true
   command -v gtk-update-icon-cache >/dev/null 2>&1 &&
@@ -63,7 +64,8 @@ case "$MODE" in
     ;;
 
   remove)
-    rm -f "$BIN" "$APPDIR/$DESKTOP" "$ICONDIR/$ICON"
+    rm -f "$BIN" "$APPDIR/$DESKTOP" "$ICONDIR/$ICON" \
+      "$APPDIR/local.Kadr.desktop" "$ICONDIR/local.Kadr.svg"
     command -v update-desktop-database >/dev/null 2>&1 &&
       update-desktop-database "$APPDIR" >/dev/null 2>&1 || true
     echo "-> usunięte: $BIN, $APPDIR/$DESKTOP, $ICONDIR/$ICON"

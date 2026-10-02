@@ -33,9 +33,11 @@ sha256sums=('8f55ca12847cf97fdebbf4263ea589e1a982b3a63f437427bab8dbf7d481eb82')
 package() {
   cd "$pkgname-$pkgver"
   install -Dm755 kadr "$pkgdir/usr/bin/kadr"
-  install -Dm644 local.Kadr.desktop "$pkgdir/usr/share/applications/local.Kadr.desktop"
-  install -Dm644 local.Kadr.svg \
-    "$pkgdir/usr/share/icons/hicolor/scalable/apps/local.Kadr.svg"
+  install -Dm644 org.kadr.kadr.desktop "$pkgdir/usr/share/applications/org.kadr.kadr.desktop"
+  install -Dm644 org.kadr.kadr.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/org.kadr.kadr.svg"
+  install -Dm644 org.kadr.kadr.metainfo.xml \
+    "$pkgdir/usr/share/metainfo/org.kadr.kadr.metainfo.xml"
   install -Dm644 locale/en/LC_MESSAGES/kadr.mo \
     "$pkgdir/usr/share/locale/en/LC_MESSAGES/kadr.mo"
 }

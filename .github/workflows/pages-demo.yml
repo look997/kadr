@@ -25,7 +25,7 @@ jobs:
       - name: Prepare standalone demo
         run: |
           mkdir -p _site
-          cp kadr.html _site/kadr.html
+          cp kadr.html manifest.webmanifest sw.js org.kadr.kadr.svg pwa-icon-192.png pwa-icon-512.png _site/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

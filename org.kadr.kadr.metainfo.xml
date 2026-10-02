@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.kadr.kadr</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Kadr</name>
+  <summary>Batch crop multiple images</summary>
+  <description>
+    <p>Kadr crops several images in one batch. Apply one crop to every image, or set a separate crop for selected files.</p>
+    <p>Save cropped copies or replace originals with backup and undo support. The application supports image formats provided by the installed GdkPixbuf modules.</p>
+  </description>
+  <launchable type="desktop-id">org.kadr.kadr.desktop</launchable>
+  <url type="homepage">https://github.com/look997/kadr</url>
+  <url type="bugtracker">https://github.com/look997/kadr/issues</url>
+  <developer id="org.kadr">
+    <name>look997</name>
+  </developer>
+  <releases>
+    <release version="1.2.1" date="2026-10-02">
+      <description>
+        <p>Updated application translations, browser demo, and distribution metadata.</p>
+      </description>
+    </release>
+    <release version="1.2.0" date="2026-10-01">
+      <description>
+        <p>English application interface and browser demo.</p>
+      </description>
+    </release>
+  </releases>
+  <provides>
+    <binary>kadr</binary>
+  </provides>
+  <categories>
+    <category>Graphics</category>
+  </categories>
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-cartoon">none</content_attribute>
+    <content_attribute id="violence-fantasy">none</content_attribute>
+    <content_attribute id="violence-realistic">none</content_attribute>
+    <content_attribute id="violence-bloodshed">none</content_attribute>
+    <content_attribute id="violence-sexual">none</content_attribute>
+    <content_attribute id="drugs-alcohol">none</content_attribute>
+    <content_attribute id="drugs-narcotics">none</content_attribute>
+    <content_attribute id="drugs-tobacco">none</content_attribute>
+    <content_attribute id="sex-nudity">none</content_attribute>
+    <content_attribute id="sex-themes">none</content_attribute>
+    <content_attribute id="language-profanity">none</content_attribute>
+    <content_attribute id="language-humor">none</content_attribute>
+    <content_attribute id="language-discrimination">none</content_attribute>
+    <content_attribute id="money-purchasing">none</content_attribute>
+    <content_attribute id="money-gambling">none</content_attribute>
+    <content_attribute id="money-advertising">none</content_attribute>
+    <content_attribute id="social-chat">none</content_attribute>
+    <content_attribute id="social-audio">none</content_attribute>
+    <content_attribute id="social-contacts">none</content_attribute>
+    <content_attribute id="social-info">none</content_attribute>
+    <content_attribute id="social-location">none</content_attribute>
+  </content_rating>
+</component>

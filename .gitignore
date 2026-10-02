@@ -3,6 +3,8 @@ pkg/
 src/
 dist/
 dev-material/
+.flatpak-builder/
+build-dir/
 *.pkg.tar.zst
 *.sig
 *.tar.gz
@@ -13,7 +15,7 @@ dev-material/
 __pycache__/
 *.py[cod]
 
-# generowane lokalnie (aur/.SRCINFO jest śledzone)
+# generowane lokalnie
 /.SRCINFO
 
 # edytory

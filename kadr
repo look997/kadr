@@ -19,7 +19,9 @@ import cairo
 
 
 def load_translations():
-    localedirs = (os.path.join(os.path.dirname(os.path.abspath(__file__)), 'locale'),
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    localedirs = (os.path.join(app_dir, 'locale'),
+                  os.path.join(app_dir, '..', 'share', 'locale'),
                   os.path.join(sys.prefix, 'share', 'locale'))
     for localedir in localedirs:
         try:
@@ -99,28 +101,12 @@ SCHEME_HELP = _('Kody daty: %Y rok, %m miesiąc, %d dzień, %H godzina, %M minut
 NAV_HINT = _('użyj ←/→ lub kółka myszy')
 
 CSS = """
-@define-color window_bg_color #1f1f1e;
-@define-color window_fg_color #fff;
-@define-color view_bg_color #1f1f1e;
-@define-color view_fg_color #fff;
-@define-color headerbar_bg_color #1f1f1e;
-@define-color headerbar_fg_color #fff;
-@define-color headerbar_backdrop_color #1f1f1e;
-@define-color dialog_bg_color #1f1f1e;
-@define-color dialog_fg_color #fff;
-@define-color popover_bg_color #1f1f1e;
-@define-color popover_fg_color #fff;
-@define-color card_bg_color alpha(#fff, .06);
-@define-color accent_bg_color #487cdf;
-@define-color accent_fg_color #fff;
-@define-color accent_color #487cdf;
-.dim { color: #a7a7a7; }
-.green { color: #3ec46d; }
-.canvas { background: alpha(#000, .25); border-radius: 8px; }
+.green { color: @success_color; }
+.canvas { background: alpha(@window_fg_color, .04); border-radius: 8px; }
 .canvas:focus-visible { outline: none; }
-.canvas.drop-hover { box-shadow: inset 0 0 0 2px #487cdf; }
+.canvas.drop-hover { box-shadow: inset 0 0 0 2px @accent_color; }
 .grip { background: transparent; border-radius: 4px; }
-.grip:hover, .grip.drag { background: alpha(#487cdf, .35); }
+.grip:hover, .grip.drag { background: alpha(@accent_color, .35); }
 .slim-spin button { min-width: 22px; padding-left: 0; padding-right: 0; }
 .slim-spin text { min-width: 0; }
 """
@@ -1176,7 +1162,7 @@ class Win(Adw.ApplicationWindow):
         head.pack_start(b)
 
         self.b_as = Gtk.Button(
-            child=Adw.ButtonContent(icon_name='document-save-as-symbolic', label=_('Zapisz jako')),
+            child=Adw.ButtonContent(icon_name='document-save-as-symbolic', label=_('Zapisz jako…')),
             css_classes=['raised'],
             tooltip_text=_('Zapisuje przycięte kopie wszystkich załadowanych obrazów jako nowe pliki.\n'
                          'Nazwę (schemat) można zmienić w dialogu, domyślnie '
@@ -1199,7 +1185,9 @@ class Win(Adw.ApplicationWindow):
                          'Kopie oryginałów są zachowywane, więc można to cofnąć przyciskiem „Cofnij”.\n'
                          'Formaty bez obsługi zapisu w systemie trafiają jako PNG obok oryginału.'))
         self.b_save.connect('clicked', self.ask_overwrite)
-        self.b_undo = Gtk.Button(child=Adw.ButtonContent(icon_name='edit-undo-symbolic', label=_('Cofnij')))
+        self.b_undo = Gtk.Button(
+            child=Adw.ButtonContent(icon_name='edit-undo-symbolic', label=_('Cofnij')),
+            css_classes=['flat'])
         self.b_undo.connect('clicked', self.undo)
 
         # przyciski na samym końcu headera: panel (najbardziej na prawo) i tryb indywidualny
@@ -1292,7 +1280,11 @@ class Win(Adw.ApplicationWindow):
         self.act_center.connect('activate', lambda a, p: self.ratio_center())
         self.add_action(self.act_center)
         rb = Gtk.Box(css_classes=['linked'])
-        self.b_ratio = Gtk.MenuButton(child=Icon(draw_ratio_icon), menu_model=menu,
+        ratio_content = Gtk.Box(spacing=4)
+        ratio_content.append(Icon(draw_ratio_icon))
+        ratio_content.append(Gtk.Image.new_from_icon_name('pan-down-symbolic'))
+        self.b_ratio = Gtk.MenuButton(child=ratio_content, menu_model=menu,
+                                      direction=Gtk.ArrowType.DOWN,
                                       tooltip_text=_('Proporcje kadru\nOdwracanie proporcji i wyśrodkowanie kadru'))
         self.b_hundo = Gtk.Button(icon_name='edit-undo-symbolic',
                                   tooltip_text=_('Cofnij zmianę kadru (Ctrl+Z)\nCtrl+Shift+Z — ponów\n'
@@ -2189,7 +2181,7 @@ class Win(Adw.ApplicationWindow):
     def is_dirty(self):
         return bool(self.dirty and self.has_crops() and self.thumbs)
 
-    def on_close(self, *_):
+    def on_close(self, *_args):
         if self.saving:
             self.toast(_('Trwa zapisywanie — zamknij okno, gdy się skończy'))
             return True
@@ -2470,7 +2462,7 @@ class Win(Adw.ApplicationWindow):
         self.upd_title()
 
     # --- dodawanie obrazów: przycisk, drop, schowek ---
-    def open_files(self, *_):
+    def open_files(self, *_args):
         f = Gtk.FileFilter()
         f.set_name(_('Obrazy'))
         for fm in FORMATS:
@@ -2484,7 +2476,11 @@ class Win(Adw.ApplicationWindow):
     def on_files(self, d, res):
         try:
             files = d.open_multiple_finish(res)
-        except GLib.Error:
+        except GLib.Error as e:
+            if (e.matches(Gtk.DialogError.quark(), Gtk.DialogError.CANCELLED) or
+                    e.matches(Gtk.DialogError.quark(), Gtk.DialogError.DISMISSED)):
+                return
+            self.toast(_('Nie można otworzyć okna wyboru plików: {error}').format(error=e.message))
             return
         self.add_files([files.get_item(i).get_path() for i in range(files.get_n_items())])
 
@@ -2898,7 +2894,7 @@ class Win(Adw.ApplicationWindow):
         if self.b_as.get_sensitive() and not self.saving:
             self.save(False)
 
-    def ask_overwrite(self, _):
+    def ask_overwrite(self, _button):
         nc = sum(1 for t in self.thumbs if self.crop_of(t))
         d = Adw.AlertDialog(heading=_('Zastąpić oryginalne?'),
                             body=_('Obrazy z kadrem ({count}) zostaną zastąpione przyciętymi wersjami — '
@@ -2920,7 +2916,7 @@ class Win(Adw.ApplicationWindow):
         d.connect('response', lambda d, r: self.save(True) if r == 'yes' else None)
         d.present(self)
 
-    def ask_save_as(self, _):
+    def ask_save_as(self, _button):
         now = datetime.now()
         n = sum(1 for t in self.thumbs if self.crop_of(t))
         ex = (self.cur or self.thumbs[0]).path
@@ -2987,9 +2983,9 @@ class Win(Adw.ApplicationWindow):
         box.append(lst)
         box.append(hint)
 
-        def refresh():
+        def refresh(preview_now=None):
             scheme = st['scheme']
-            name, _fmt = out_name(ex, scheme, now, 1)
+            name, _fmt = out_name(ex, scheme, preview_now or datetime.now(), 1)
             folder = self.dest or save_dir(ex)
             default = _('Obok oryginałów — każdy plik w swoim folderze')
             if has_paste:
@@ -3014,7 +3010,7 @@ class Win(Adw.ApplicationWindow):
             self.dest = f.get_path()
             refresh()
 
-        def pick(_):
+        def pick(_button):
             fd = Gtk.FileDialog(title=_('Folder zapisu'))
             fd.set_initial_folder(Gio.File.new_for_path(self.dest or save_dir(ex)))
             fd.select_folder(self, None, picked)
@@ -3023,7 +3019,7 @@ class Win(Adw.ApplicationWindow):
             self.dest = None
             refresh()
 
-        def toggle(*_):
+        def toggle(*_args):
             on = not r_edit.get_visible()
             r_edit.set_visible(on)
             r_tok.set_visible(on)
@@ -3038,7 +3034,7 @@ class Win(Adw.ApplicationWindow):
             refresh()
 
         def copy(_):
-            text = self.commands_text(st['scheme'], now, self.dest)
+            text = self.commands_text(st['scheme'], datetime.now(), self.dest)
             if not text:
                 return
             cb = self.get_clipboard()
@@ -3058,23 +3054,34 @@ class Win(Adw.ApplicationWindow):
         r_edit.connect('entry-activated', toggle)
         refresh()
 
-        def answer(dlg, r):
+        def refresh_preview():
+            if not d.get_visible():
+                return GLib.SOURCE_REMOVE
+            refresh()
+            return GLib.SOURCE_CONTINUE
+
+        GLib.timeout_add_seconds(1, refresh_preview)
+
+        def answer(dlg, r, saved_at=None):
             if r != 'save':
                 return
             self.scheme = st['scheme']
             self.persist_soon()
-            self.save(False, now, self.dest)
+            self.save(False, saved_at or datetime.now(), self.dest)
 
         head_l = Gtk.Label(label=_('Zapisz jako'), css_classes=['title-2'], wrap=True)
         body_l = Gtk.Label(label=_('Przycięte kopie zostaną zapisane jako nowe pliki. Oryginały się nie zmienią.'),
                            wrap=True, justify=Gtk.Justification.CENTER, max_width_chars=50)
-        b_cancel = Gtk.Button(label=_('Anuluj'))
-        b_ok = Gtk.Button(label=_('Zapisz'), css_classes=['suggested-action'])
+        b_cancel = Gtk.Button(label=_('Anuluj'), height_request=40, hexpand=True)
+        b_ok = Gtk.Button(label=_('Zapisz'), css_classes=['suggested-action'],
+                          height_request=40, hexpand=True)
         b_cancel.connect('clicked', lambda b: d.close())
 
         def ok(_):
+            saved_at = datetime.now()
+            refresh(saved_at)
             d.close()
-            answer(d, 'save')
+            answer(d, 'save', saved_at)
         b_ok.connect('clicked', ok)
         btns = Gtk.Box(spacing=12, homogeneous=True)
         btns.append(b_cancel)
@@ -3336,7 +3343,7 @@ class Win(Adw.ApplicationWindow):
         else:
             self.toast(msg)
 
-    def undo(self, _):
+    def undo(self, _button):
         m = self.undo_m
         if not m or self.saving:
             return
@@ -3391,12 +3398,11 @@ class Win(Adw.ApplicationWindow):
 
 class App(Adw.Application):
     def __init__(self):
-        super().__init__(application_id='local.Kadr', flags=Gio.ApplicationFlags.HANDLES_OPEN)
+        super().__init__(application_id='org.kadr.kadr', flags=Gio.ApplicationFlags.HANDLES_OPEN)
 
     def do_startup(self):
         Adw.Application.do_startup(self)
-        Gtk.Window.set_default_icon_name('local.Kadr')
-        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+        Gtk.Window.set_default_icon_name('org.kadr.kadr')
         try:
             # suwaki nakładkowe (cienkie, nie zabierają miejsca) — niezależnie od ustawień systemu
             Gtk.Settings.get_default().set_property('gtk-overlay-scrolling', True)
