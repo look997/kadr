@@ -1290,8 +1290,8 @@ class Win(Adw.ApplicationWindow):
                                   tooltip_text=_('Cofnij zmianę kadru (Ctrl+Z)\nCtrl+Shift+Z — ponów\n'
                                                  'Działa też na kadr zmieniany myszą i polami liczbowymi.'))
         self.b_hundo.connect('clicked', self.hist_undo)
-        rb.append(self.b_ratio)
         rb.append(self.b_hundo)
+        rb.append(self.b_ratio)
 
         self.zrow = Gtk.Box(spacing=8)
         self.zrow.append(rb)
@@ -1390,12 +1390,21 @@ class Win(Adw.ApplicationWindow):
         self.restore(st)
         return GLib.SOURCE_REMOVE
 
-    def toast(self, text, button=None, action=None, timeout=None):
+    def toast(self, text, button=None, action=None, timeout=None, copy_text=None):
         t = Adw.Toast.new(text)
         t.set_use_markup(False)
+        if copy_text and not button:
+            button = _('Kopiuj')
         if button and action:
             t.set_button_label(button)
-            t.connect('button-clicked', lambda *_: action())
+            def clicked(*_):
+                if copy_text:
+                    self.copy_text(copy_text)
+                action()
+            t.connect('button-clicked', clicked)
+        elif copy_text:
+            t.set_button_label(button)
+            t.connect('button-clicked', lambda *_: self.copy_text(copy_text))
         if timeout is not None:
             t.set_timeout(timeout)
         self.toasts.add_toast(t)
@@ -1413,7 +1422,7 @@ class Win(Adw.ApplicationWindow):
             t.connect('button-clicked', lambda *_: self.restore_cleared())
         elif kind == 'errors' and self.errors:
             t = Adw.Toast.new(self.errors['msg'])
-            t.set_button_label(_('Szczegóły'))
+            t.set_button_label(_('Kopiuj i pokaż szczegóły'))
             t.connect('button-clicked', lambda *_: self.errors_clicked())
         else:
             return None
@@ -1449,7 +1458,19 @@ class Win(Adw.ApplicationWindow):
 
     def errors_clicked(self):
         self.bumped = True      # przycisk zdejmuje toast, a ten ma zostać do otwarcia nowych obrazów
+        self.copy_text(self.error_report_text())
         self.show_errors()
+
+    def copy_text(self, text):
+        provider = Gdk.ContentProvider.new_for_value(GObject.Value(GObject.TYPE_STRING, text))
+        self.get_clipboard().set_content(provider)
+
+    def error_report_text(self):
+        e = self.errors
+        if not e:
+            return ''
+        return e['intro'] + '\n\n' + '\n\n'.join(
+            f"{it.get('path') or _('Błąd ogólny')}\n{it['why']}" for it in e['errs'])
 
     def forget_cleared(self):
         """Zapomina zrzut listy i raport błędów (np. po otwarciu nowych obrazów) i zdejmuje trwały toast."""
@@ -2572,8 +2593,8 @@ class Win(Adw.ApplicationWindow):
         self.load_done += 1
         try:
             t = Thumb(p, self.info_for)
-        except (GLib.Error, TypeError):
-            self.load_bad.append(os.path.basename(p))
+        except (GLib.Error, TypeError) as e:
+            self.load_bad.append({'path': p, 'why': err_text(e)})
             self.load_groups.pop(p, None)
         else:
             g = self.load_groups.pop(p, None)
@@ -2602,14 +2623,20 @@ class Win(Adw.ApplicationWindow):
         self.report_load()
 
     def report_load(self):
-        msgs = []
         if self.load_bad:
-            msgs.append(_('Nie można otworzyć: ') + ', '.join(self.load_bad[:3]) + ('…' if len(self.load_bad) > 3 else ''))
+            names = [os.path.basename(it['path']) for it in self.load_bad]
+            self.errors = {
+                'title': _('Błędy otwierania'),
+                'msg': _('Nie można otworzyć: {files}{more}').format(
+                    files=', '.join(names[:3]), more='…' if len(names) > 3 else ''),
+                'errs': self.load_bad,
+                'outs': [],
+                'intro': _('Tych obrazów nie udało się otworzyć:'),
+            }
+            self.show_sticky('errors')
         if self.load_dup:
-            msgs.append(_('Pominięto duplikaty: {count}').format(count=self.load_dup))
+            self.toast(_('Pominięto duplikaty: {count}').format(count=self.load_dup))
         self.load_bad, self.load_dup = [], 0
-        if msgs:
-            self.toast(' · '.join(msgs))
 
     def cancel_load(self):
         if self.load_id:
@@ -2803,7 +2830,8 @@ class Win(Adw.ApplicationWindow):
             t.current = t is cur
             t.selected = t in self.selected
             t.queue_draw()
-            tip = t.name + '\n' + _('Środkowy przycisk myszy — pokaż w menedżerze plików') + (
+            tip = t.name + '\n' + _('Ścieżka źródłowa: {path}').format(path=t.path) + (
+                '\n' + _('Środkowy przycisk myszy — pokaż w menedżerze plików')) + (
                 '\n% — ' + _('kadr przeskalowany pod ten obraz')
                             if self.raw_of(t) and self.ratio(t) else '')
             if tip != t.tip:

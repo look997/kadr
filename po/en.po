@@ -231,6 +231,14 @@ msgstr "Restore"
 msgid "Szczegóły"
 msgstr "Details"
 
+#: kadr:1427
+msgid "Kopiuj i pokaż szczegóły"
+msgstr "Copy and show details"
+
+#: kadr:1460
+msgid "Kopiuj"
+msgstr "Copy"
+
 #: kadr:1494
 msgid "Błąd ogólny"
 msgstr "General error"
@@ -432,6 +440,24 @@ msgstr "Saving in progress — add images when it is finished"
 #: kadr:2611 kadr:2718
 msgid "Nie można otworzyć: "
 msgstr "Could not open: "
+
+#: kadr:2614
+#, python-brace-format
+msgid "Nie można otworzyć: {files}{more}"
+msgstr "Could not open: {files}{more}"
+
+#: kadr:2618
+msgid "Tych obrazów nie udało się otworzyć:"
+msgstr "Could not open these images:"
+
+#: kadr:2619
+msgid "Błędy otwierania"
+msgstr "Errors opening images"
+
+#: kadr:2829
+#, python-brace-format
+msgid "Ścieżka źródłowa: {path}"
+msgstr "Source path: {path}"
 
 #: kadr:2613
 #, python-brace-format

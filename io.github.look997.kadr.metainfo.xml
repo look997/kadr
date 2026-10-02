@@ -16,6 +16,11 @@
     <name>look997</name>
   </developer>
   <releases>
+    <release version="1.2.3" date="2026-10-02">
+      <description>
+        <p>Improved crop controls, image source tooltips, and copyable error reports in the desktop app and browser demo.</p>
+      </description>
+    </release>
     <release version="1.2.2" date="2026-10-02">
       <description>
         <p>Updated the application ID and restored browser demo crop sessions after reselecting images.</p>
