@@ -16,6 +16,11 @@
     <name>look997</name>
   </developer>
   <releases>
+    <release version="1.2.5" date="2026-10-02">
+      <description>
+        <p>Include the trailing path separator in thumbnail source folder tooltips.</p>
+      </description>
+    </release>
     <release version="1.2.4" date="2026-10-02">
       <description>
         <p>Show only the containing folder in image thumbnail tooltips.</p>

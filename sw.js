@@ -1,4 +1,4 @@
-const CACHE = 'kadr-demo-v9';
+const CACHE = 'kadr-demo-v10';
 const FILES = [
   './kadr.html',
   './manifest.webmanifest',
